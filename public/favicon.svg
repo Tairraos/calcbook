@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Calcbook</title>
+  <rect x="2" y="2" width="60" height="60" rx="17" fill="#365b45"/>
+  <path d="M20 16h21a5 5 0 0 1 5 5v28H25a5 5 0 0 1-5-5V16Z" fill="none" stroke="#f6f7ee" stroke-width="3"/>
+  <path d="M26 27h13m-13 8h13M20 42h26" stroke="#f6f7ee" stroke-width="3" stroke-linecap="round"/>
+</svg>
