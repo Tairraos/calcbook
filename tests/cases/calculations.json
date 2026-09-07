@@ -1,0 +1,151 @@
+[
+  { "name": "decimal arithmetic is exact", "source": "0.1 + 0.2", "expected": ["0.3"] },
+  { "name": "operator precedence", "source": "10 + 6 * 3\n(10 + 6) * 3", "expected": ["28", "48"] },
+  {
+    "name": "powers and negative numbers",
+    "source": "2^3^2\n-2^2\n(-2)^2",
+    "expected": ["512", "-4", "4"]
+  },
+  { "name": "implicit multiplication", "source": "6(3)", "expected": ["18"] },
+  {
+    "name": "x multiplication with numeric and grouped operands",
+    "source": "2x3x4\n(2+3)x4\n2x-3\n2x(3+4)\n2e3x4",
+    "expected": ["24", "20", "-6", "14", "8000"]
+  },
+  {
+    "name": "x operator does not alter variable names",
+    "source": "tax=3\nmaxCost=5\nitem2x3=7\nx=4\nx2=6\n2*x\ntax x maxCost\nitem2x3+x2\nx x x",
+    "expected": ["3", "5", "7", "4", "6", "8", "15", "13", "16"]
+  },
+  {
+    "name": "all grouping brackets share arithmetic precedence",
+    "source": "[2+3]x4\n{[18+24]x(3-1)}\nsqrt[144]\n[1,2]\n{2+3\n2+3}",
+    "expected": ["20", "84", "12", "!error", "!error", "!error"]
+  },
+  {
+    "name": "relative percentage",
+    "source": "200 + 10%\n200 - 10%\n200 * 10%",
+    "expected": ["220", "180", "20"]
+  },
+  {
+    "name": "percentage phrases",
+    "source": "20% of 150\n10% on 200\n10% off 200",
+    "expected": ["30", "220", "180"]
+  },
+  {
+    "name": "percentage variables retain their meaning",
+    "source": "折扣 = 10%\n200 - 折扣\n200 * 折扣",
+    "expected": ["0.1", "180", "20"]
+  },
+  {
+    "name": "Chinese variables and dependency updates",
+    "source": "单价 = 128\n数量 = 3\n单价 × 数量",
+    "expected": ["128", "3", "384"]
+  },
+  {
+    "name": "reassignment updates following lines",
+    "source": "price=10\nprice+2\nprice=20\nprice+2",
+    "expected": ["10", "12", "20", "22"]
+  },
+  { "name": "subtract without spaces", "source": "price=10\nprice-2", "expected": ["10", "8"] },
+  {
+    "name": "failed assignment invalidates old value",
+    "source": "price=10\nprice=1/0\nprice+2",
+    "expected": ["10", "!error", "!error"]
+  },
+  {
+    "name": "forward references are explicit errors",
+    "source": "cost+1\ncost=5",
+    "expected": ["!error", "5"]
+  },
+  {
+    "name": "plain prose stays prose",
+    "source": "明天出发，记得带伞\n# 预算\n// 备注 2026\n",
+    "expected": ["!note", "!heading", "!note", "!empty"]
+  },
+  {
+    "name": "labels and comments",
+    "source": "Coffee: 18+24 // 两杯\n交通：186 × 2",
+    "expected": ["42", "372"]
+  },
+  {
+    "name": "segment summaries",
+    "source": "10\n20\nsum\navg\n\n7\n8\ntotal",
+    "expected": ["10", "20", "30", "15", "!empty", "7", "8", "15"]
+  },
+  {
+    "name": "sum must not hide errors",
+    "source": "10\n1/0\nsum\n\n2\nsum",
+    "expected": ["10", "!error", "!error", "!empty", "2", "2"]
+  },
+  { "name": "empty aggregate is an error", "source": "sum", "expected": ["!error"] },
+  {
+    "name": "previous result",
+    "source": "12 * 3\n// 注释\nprev+4",
+    "expected": ["36", "!note", "40"]
+  },
+  {
+    "name": "error invalidates previous result",
+    "source": "12\n1/0\nprev",
+    "expected": ["12", "!error", "!error"]
+  },
+  { "name": "compatible unit addition", "source": "2 km + 500 m", "expected": ["2.5 km"] },
+  {
+    "name": "unit conversion",
+    "source": "5 km to m\n90 min to hour\n1 kg to g",
+    "expected": ["5000 m", "1.5 hour", "1000 g"]
+  },
+  {
+    "name": "Chinese unit aliases",
+    "source": "5 公里 to 米\n30 分钟 to 小时",
+    "expected": ["5000 m", "0.5 hour"]
+  },
+  {
+    "name": "same-currency amounts",
+    "source": "¥30 + 12 CNY\n$10 + 5 USD",
+    "expected": ["42 CNY", "15 USD"]
+  },
+  { "name": "never invent exchange rates", "source": "10 USD to CNY", "expected": ["!error"] },
+  { "name": "incompatible units", "source": "2 m + 3 kg", "expected": ["!error"] },
+  {
+    "name": "safe numeric functions",
+    "source": "sqrt(144)\nabs(-5)\nround(2.345,2)\nceil(2.1)\nfloor(2.9)",
+    "expected": ["12", "5", "2.35", "3", "2"]
+  },
+  {
+    "name": "natural operator words",
+    "source": "8 times 9\n10 plus 2\n10 minus 2\n10 divided by 2",
+    "expected": ["72", "12", "8", "5"]
+  },
+  {
+    "name": "full-width punctuation",
+    "source": "（12 + 8） × 2\n200 + 10％",
+    "expected": ["40", "220"]
+  },
+  { "name": "thousands separators", "source": "1,234,567 + 1", "expected": ["1234568"] },
+  {
+    "name": "non-finite values are errors",
+    "source": "1/0\n0/0\nsqrt(-1)",
+    "expected": ["!error", "!error", "!error"]
+  },
+  {
+    "name": "unfinished expression is isolated",
+    "source": "2 +\n4+4",
+    "expected": ["!error", "8"]
+  },
+  {
+    "name": "scripts and unapproved functions are rejected",
+    "source": "import(2)\nevaluate(2)\n2 + foo.bar\nsin(1)",
+    "expected": ["!error", "!error", "!error", "!error"]
+  },
+  {
+    "name": "reserved names cannot be reassigned",
+    "source": "pi=3\nkg=7\nsum=9",
+    "expected": ["!error", "!error", "!error"]
+  },
+  {
+    "name": "exponent and magnitude limits",
+    "source": "2^1001\n9^9^9\n1e309",
+    "expected": ["!error", "!error", "!error"]
+  }
+]
