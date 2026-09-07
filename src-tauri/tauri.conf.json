@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Calcbook",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "identifier": "com.tairraos.calcbook",
   "build": {
     "beforeDevCommand": "pnpm dev",
@@ -10,7 +10,7 @@
     "frontendDist": "../dist"
   },
   "app": {
-    "windows": [{ "title": "Calcbook", "width": 1280, "height": 820, "minWidth": 760, "minHeight": 560, "backgroundColor": "#f8f9f5", "center": true }],
+    "windows": [{ "title": "Calcbook", "width": 1280, "height": 820, "minWidth": 760, "minHeight": 560, "backgroundColor": "#f8f9f5", "center": true, "titleBarStyle": "Overlay", "hiddenTitle": true }],
     "security": {
       "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src ipc: http://ipc.localhost; object-src 'none'; base-uri 'self'; form-action 'none'",
       "devCsp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src ipc: http://ipc.localhost http://127.0.0.1:* ws://127.0.0.1:*; object-src 'none'; base-uri 'self'; form-action 'none'"
