@@ -18,7 +18,7 @@ src-tauri/      ← invoke（固定命令、系统路径、原子写入、保存
 | --- | --- | --- |
 | `src/domain/calculation.ts` | 逐行语义、x/括号别名、AST 白名单、BigNumber/Unit、两种显示精度 | DOM、I/O、React、任意脚本执行 |
 | `src/domain/keypad.ts` | 普通计算器的确定性状态转换 | 自己实现第二套数学语义 |
-| `src/domain/notebook.ts` | 工作区结构、旧主题迁移、六套主题与显示偏好校验 | 获取时间、生成 ID、读写数据 |
+| `src/domain/notebook.ts` | 工作区结构、旧主题迁移、两套主题与显示偏好校验 | 获取时间、生成 ID、读写数据 |
 | `src/ui/` | 原生 textarea 镜像、结果、按键、帮助与设置 dialog | Tauri、localStorage、文件系统 |
 | `src/platform/storage.ts` | 平台分支、数据校验、关闭保护、导出、目录选择、打开项目链接 | 组件状态、业务计算 |
 | `src/useWorkspace.ts` | 先读后写、串行保存、成功/失败状态 | 静默吞掉最终保存失败 |
@@ -34,7 +34,7 @@ src-tauri/      ← invoke（固定命令、系统路径、原子写入、保存
 4. Rust 以互斥锁串行访问固定文件：先写临时文件并同步，验证旧文件，保留一份 `.bak`，再原子替换。
 5. 原生窗口关闭请求会等待保存；失败时保留窗口。浏览器离开时对未保存状态触发原生提示。
 6. 删除是 `trashed=true`，可随时恢复；没有自动清理或永久删除。
-7. 工作区继续使用 version 1；旧 `light`/`dark` 分别迁移为 `paper`/`forest`，缺失 `calculatorMode` 时采用 `sidebar`。非法配置仍报错。
+7. 工作区继续使用 version 1；旧主题 `light`/`sand`/`mist` 迁移为 `paper`，`dark`/`forest`/`graphite` 迁移为 `midnight`，缺失 `calculatorMode` 时采用 `sidebar`。非法配置仍报错。
 
 工作区没有保存计算结果，结果始终从源文本推导。变量仅在一篇笔记中自上而下有效。计算器状态由 App 持有，在边栏/弹窗切换、收起后保留，重启后清空。
 
