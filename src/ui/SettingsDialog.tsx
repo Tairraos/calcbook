@@ -1,30 +1,10 @@
-import { Check, ExternalLink, FolderOpen, PanelRight, PanelsTopLeft, X } from "lucide-react";
+import { ExternalLink, FolderOpen, PanelRight, PanelsTopLeft, X } from "lucide-react";
 import { useState } from "react";
-import type { CalculatorMode, Theme } from "../domain/notebook.ts";
+import type { CalculatorMode } from "../domain/notebook.ts";
 import { Dialog } from "./Dialog.tsx";
 import { IconButton } from "./IconButton.tsx";
 
-const themeGroups: { label: string; themes: { id: Theme; name: string }[] }[] = [
-  {
-    label: "浅色",
-    themes: [
-      { id: "paper", name: "纸白" },
-      { id: "sand", name: "暖砂" },
-      { id: "mist", name: "雾蓝" },
-    ],
-  },
-  {
-    label: "深色",
-    themes: [
-      { id: "forest", name: "苔夜" },
-      { id: "midnight", name: "午夜" },
-      { id: "graphite", name: "石墨" },
-    ],
-  },
-];
-
 export function SettingsDialog({
-  theme,
   calculatorMode,
   directory,
   defaultDirectory,
@@ -34,13 +14,11 @@ export function SettingsDialog({
   githubUrl,
   saveStatus,
   saveError,
-  onThemeChange,
   onCalculatorModeChange,
   onChangeDirectory,
   onOpenProject,
   onClose,
 }: {
-  theme: Theme;
   calculatorMode: CalculatorMode;
   directory: string;
   defaultDirectory: string;
@@ -50,7 +28,6 @@ export function SettingsDialog({
   githubUrl: string;
   saveStatus: string;
   saveError: string;
-  onThemeChange: (theme: Theme) => void;
   onCalculatorModeChange: (mode: CalculatorMode) => void;
   onChangeDirectory: () => Promise<boolean>;
   onOpenProject: () => Promise<void>;
@@ -120,45 +97,6 @@ export function SettingsDialog({
           </p>
         )}
       </section>
-
-      <fieldset className="settings-section theme-settings" disabled={busy}>
-        <legend>主题配色</legend>
-        {themeGroups.map((group) => (
-          <div className="theme-group" key={group.label}>
-            <span className="theme-group-name">{group.label}</span>
-            <div className="theme-options">
-              {group.themes.map((option) => (
-                <label
-                  className={`theme-option ${theme === option.id ? "is-selected" : ""}`}
-                  key={option.id}
-                >
-                  <input
-                    type="radio"
-                    name="theme"
-                    aria-label={`${option.name}（${group.label}）`}
-                    value={option.id}
-                    checked={theme === option.id}
-                    onChange={() => onThemeChange(option.id)}
-                    className="visually-hidden"
-                  />
-                  <span className="theme-preview" data-theme={option.id} aria-hidden="true">
-                    <span className="theme-preview-sidebar" />
-                    <span className="theme-preview-text">
-                      12 × 8<span />
-                      <span />
-                    </span>
-                    <strong>96</strong>
-                  </span>
-                  <span className="theme-option-name">
-                    {option.name}
-                    {theme === option.id && <Check size={13} />}
-                  </span>
-                </label>
-              ))}
-            </div>
-          </div>
-        ))}
-      </fieldset>
 
       <fieldset className="settings-section" disabled={busy}>
         <legend>简易计算器</legend>

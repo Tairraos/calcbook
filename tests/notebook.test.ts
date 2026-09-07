@@ -25,11 +25,15 @@ test("corrupt or unsupported workspaces are not accepted as empty", () => {
   workspace.notes[0].body = "x".repeat(MAX_NOTE_LENGTH + 1);
   assert.throws(() => parseWorkspace(workspace));
 });
-test("legacy themes and missing calculator preference migrate without changing notes", () => {
+test("legacy and removed themes migrate without changing notes", () => {
   const workspace = createWorkspace(new Date().toISOString(), () => crypto.randomUUID());
   for (const [legacy, current] of [
     ["light", "paper"],
-    ["dark", "forest"],
+    ["sand", "paper"],
+    ["mist", "paper"],
+    ["dark", "midnight"],
+    ["forest", "midnight"],
+    ["graphite", "midnight"],
   ]) {
     const migrated = parseWorkspace({ ...workspace, theme: legacy, calculatorMode: undefined });
     assert.equal(migrated.theme, current);

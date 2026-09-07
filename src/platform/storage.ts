@@ -3,6 +3,7 @@ import { parseWorkspace, type Workspace } from "../domain/notebook.ts";
 
 export const STORAGE_KEY = "calcbook.workspace.v1";
 export type StorageInfo = { directory: string; defaultDirectory: string; canChoose: boolean };
+export const hasNativeTitlebar = isTauri();
 
 export async function getStorageInfo(): Promise<StorageInfo> {
   return isTauri()
@@ -56,6 +57,24 @@ export async function guardNativeClose(
       failed("保存失败，窗口已保留。请重试保存或导出笔记后再关闭。");
     }
   });
+}
+
+// data-tauri-drag-region 只对标记元素本身生效；这里补上区域内子元素与空白处的拖拽。
+export async function enableTitleDragRegions(): Promise<() => void> {
+  if (!isTauri()) return () => {};
+  const { getCurrentWindow } = await import("@tauri-apps/api/window");
+  const window = getCurrentWindow();
+  const onMouseDown = (event: MouseEvent) => {
+    const target = event.target;
+    if (event.button !== 0 || !(target instanceof Element)) return;
+    if (target.hasAttribute("data-tauri-drag-region")) return; // 由 Tauri 核心处理
+    if (target.closest("button, input, textarea, select, a, label, [contenteditable]")) return;
+    if (!target.closest("[data-tauri-drag-region]")) return;
+    event.preventDefault();
+    void window.startDragging();
+  };
+  document.addEventListener("mousedown", onMouseDown);
+  return () => document.removeEventListener("mousedown", onMouseDown);
 }
 
 export async function downloadText(filename: string, content: string): Promise<boolean> {

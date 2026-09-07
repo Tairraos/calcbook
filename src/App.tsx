@@ -10,10 +10,12 @@ import {
   FileText,
   Leaf,
   Menu,
+  Moon,
   PanelLeftClose,
   Plus,
   Search,
   Settings,
+  Sun,
   Trash2,
   Undo2,
   X,
@@ -28,7 +30,12 @@ import {
   MAX_TITLE_LENGTH,
   type Note,
 } from "./domain/notebook.ts";
-import { downloadText, openProject } from "./platform/storage.ts";
+import {
+  downloadText,
+  enableTitleDragRegions,
+  hasNativeTitlebar,
+  openProject,
+} from "./platform/storage.ts";
 import { Calculator } from "./ui/Calculator.tsx";
 import { Dialog } from "./ui/Dialog.tsx";
 import { Editor } from "./ui/Editor.tsx";
@@ -73,8 +80,22 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = workspace?.theme ?? "paper";
+    document.documentElement.classList.toggle("native-titlebar", hasNativeTitlebar);
     document.title = `${selected?.title || "Calcbook"} · Calcbook`;
   }, [workspace?.theme, selected?.title]);
+
+  useEffect(() => {
+    let disposed = false;
+    let cleanup: (() => void) | undefined;
+    void enableTitleDragRegions().then((dispose) => {
+      if (disposed) dispose();
+      else cleanup = dispose;
+    });
+    return () => {
+      disposed = true;
+      cleanup?.();
+    };
+  }, []);
 
   useEffect(() => {
     if (!notice) return;
@@ -247,7 +268,7 @@ export default function App() {
     >
       {sidebarOpen && (
         <aside className="sidebar" aria-label="笔记导航">
-          <div className="brand">
+          <div className="brand" data-tauri-drag-region>
             <img src="/favicon.svg" alt="" width="31" height="31" />
             <span>
               calcbook<span className="brand-period">.</span>
@@ -364,6 +385,18 @@ export default function App() {
                 <Settings size={16} />
                 <span>设置</span>
               </button>
+              <IconButton
+                className="theme-toggle"
+                title={workspace.theme === "midnight" ? "切换到浅色模式" : "切换到深色模式"}
+                onClick={() =>
+                  update((before) => ({
+                    ...before,
+                    theme: before.theme === "midnight" ? "paper" : "midnight",
+                  }))
+                }
+              >
+                {workspace.theme === "midnight" ? <Sun size={16} /> : <Moon size={16} />}
+              </IconButton>
             </div>
           </div>
         </aside>
@@ -378,7 +411,7 @@ export default function App() {
       )}
 
       <main className="notebook-main">
-        <header className="topbar">
+        <header className="topbar" data-tauri-drag-region>
           <div className="breadcrumb">
             {!sidebarOpen && (
               <IconButton title="展开笔记列表" onClick={() => setSidebarOpen(true)}>
@@ -553,7 +586,6 @@ export default function App() {
       {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} onInsert={insertExpression} />}
       {settingsOpen && storage && (
         <SettingsDialog
-          theme={workspace.theme}
           calculatorMode={workspace.calculatorMode}
           directory={storage.directory}
           defaultDirectory={storage.defaultDirectory}
@@ -563,7 +595,6 @@ export default function App() {
           githubUrl={__GITHUB_URL__}
           saveStatus={status}
           saveError={error}
-          onThemeChange={(theme) => update((before) => ({ ...before, theme }))}
           onCalculatorModeChange={(calculatorMode) => {
             setCalculatorOpen(false);
             update((before) => ({ ...before, calculatorMode }));

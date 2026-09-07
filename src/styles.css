@@ -132,6 +132,15 @@ input::placeholder {
 .sidebar-collapse:focus-visible {
   opacity: 1;
 }
+.native-titlebar .sidebar {
+  padding-top: 8px;
+}
+.native-titlebar .brand {
+  margin-left: 64px;
+}
+.native-titlebar .app-shell:not(.has-sidebar) .topbar {
+  padding-left: 84px;
+}
 .workspace-name {
   display: flex;
   gap: 10px;
@@ -332,21 +341,29 @@ kbd {
   margin-left: auto;
 }
 .settings-entry {
+  display: flex;
+  align-items: center;
+  gap: 2px;
   margin-top: 12px;
   padding-top: 10px;
   border-top: 1px solid var(--border);
 }
-.settings-entry button {
+.settings-entry > button {
   display: flex;
   align-items: center;
   gap: 9px;
   padding: 9px 6px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   border-radius: 5px;
   color: var(--muted);
   font-size: 11px;
 }
-.settings-entry button:hover {
+.settings-entry > button:hover {
+  color: var(--green);
+  background: var(--hover);
+}
+.settings-entry .theme-toggle:hover {
   color: var(--green);
   background: var(--hover);
 }
@@ -1129,85 +1146,6 @@ fieldset.settings-section {
 .setting-message.save-error {
   color: var(--error);
 }
-.theme-group + .theme-group {
-  margin-top: 10px;
-}
-.theme-group-name {
-  display: block;
-  margin-bottom: 5px;
-  font-size: 10px;
-  color: var(--muted);
-}
-.theme-options {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-.theme-option {
-  position: relative;
-  padding: 4px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  cursor: pointer;
-}
-.theme-option.is-selected,
-.theme-option:hover {
-  border-color: var(--green);
-  background: var(--sage);
-}
-.theme-option:focus-within {
-  outline: 2px solid var(--green);
-  outline-offset: 2px;
-}
-.theme-preview {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  height: 39px;
-  border-radius: 4px;
-  overflow: hidden;
-  background: var(--paper);
-  border: 1px solid var(--border);
-  color: var(--ink);
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 8px;
-}
-.theme-preview-sidebar {
-  width: 20%;
-  align-self: stretch;
-  background: var(--sidebar);
-  border-right: 1px solid var(--border);
-}
-.theme-preview-text {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  white-space: nowrap;
-}
-.theme-preview-text > span {
-  display: block;
-  width: 20px;
-  height: 2px;
-  background: var(--strong-border);
-}
-.theme-preview-text > span:last-child {
-  width: 13px;
-}
-.theme-preview strong {
-  color: var(--green);
-  font-weight: 500;
-}
-.theme-option-name {
-  height: 23px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 3px 4px 0;
-  font-size: 10px;
-}
-.theme-option-name svg {
-  color: var(--green);
-}
 .calculator-options {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -1573,12 +1511,6 @@ fieldset.settings-section {
   }
   .settings-dialog {
     padding: 20px;
-  }
-  .theme-options {
-    gap: 7px;
-  }
-  .theme-preview {
-    gap: 5px;
   }
   .about-section {
     grid-template-columns: 1fr;

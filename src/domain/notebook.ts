@@ -1,8 +1,16 @@
 export const MAX_NOTES = 100;
 export const MAX_NOTE_LENGTH = 100_000;
 export const MAX_TITLE_LENGTH = 120;
-export const THEME_IDS = ["paper", "sand", "mist", "forest", "midnight", "graphite"] as const;
+export const THEME_IDS = ["paper", "midnight"] as const;
 export type Theme = (typeof THEME_IDS)[number];
+const LEGACY_THEMES: Record<string, Theme> = {
+  light: "paper",
+  sand: "paper",
+  mist: "paper",
+  dark: "midnight",
+  forest: "midnight",
+  graphite: "midnight",
+};
 export type CalculatorMode = "sidebar" | "dialog";
 
 export type Note = {
@@ -54,7 +62,7 @@ export function parseWorkspace(input: unknown): Workspace {
     throw new Error("笔记格式或版本不受支持，原数据已保留。");
   if (!Array.isArray(input.notes) || input.notes.length > MAX_NOTES)
     throw new Error("笔记列表无效或超过 100 篇。");
-  const theme = input.theme === "light" ? "paper" : input.theme === "dark" ? "forest" : input.theme;
+  const theme = LEGACY_THEMES[input.theme as string] ?? input.theme;
   if (!THEME_IDS.includes(theme as Theme)) throw new Error("笔记主题配置无效。");
   const calculatorMode = input.calculatorMode ?? "sidebar";
   if (calculatorMode !== "sidebar" && calculatorMode !== "dialog")

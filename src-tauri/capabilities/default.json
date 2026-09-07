@@ -3,5 +3,5 @@
   "identifier": "main-window",
   "description": "Only the local main window may listen for events and close after saving.",
   "windows": ["main"],
-  "permissions": ["core:default", "core:window:allow-destroy"]
+  "permissions": ["core:default", "core:window:allow-destroy", "core:window:allow-start-dragging"]
 }
