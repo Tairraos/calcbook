@@ -1,9 +1,10 @@
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
+import { reactClickToComponent } from "vite-plugin-react-click-to-component";
 import packageInfo from "./package.json" with { type: "json" };
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), reactClickToComponent()],
   clearScreen: false,
   define: {
     __APP_VERSION__: JSON.stringify(packageInfo.version),
