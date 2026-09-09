@@ -1,5 +1,9 @@
 @import url("./theme.css");
 
+:root {
+  --font-mono: Menlo, "SFMono-Regular", Consolas, "Liberation Mono", "PingFang SC", monospace;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -16,6 +20,7 @@ body {
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   font-size: 13px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
 button,
@@ -164,11 +169,11 @@ input::placeholder {
 }
 .workspace-name strong {
   font-weight: 550;
-  font-size: 12px;
+  font-size: 13px;
 }
 .workspace-name div > span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.2px;
 }
 .search-field {
@@ -189,7 +194,7 @@ input::placeholder {
   padding: 0;
   width: 100%;
   min-width: 0;
-  font-size: 11px;
+  font-size: 12px;
   outline-offset: 6px;
 }
 kbd {
@@ -205,7 +210,7 @@ kbd {
   gap: 9px;
   border-radius: 6px;
   padding: 10px;
-  font-size: 12px;
+  font-size: 13px;
 }
 .all-notes.is-selected {
   color: var(--green);
@@ -226,7 +231,7 @@ kbd {
   justify-content: space-between;
   padding: 19px 6px 9px 10px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.6px;
 }
 .note-list {
@@ -253,7 +258,7 @@ kbd {
 .note-card.is-selected {
   background: var(--card);
   border-color: var(--border);
-  box-shadow: 0 2px 4px #15281a04;
+  box-shadow: 0 2px 4px #00000004;
 }
 .note-card-top {
   display: flex;
@@ -266,7 +271,7 @@ kbd {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 550;
 }
 .note-card.is-selected .note-card-top svg {
@@ -274,7 +279,7 @@ kbd {
 }
 .note-preview {
   margin-left: 23px;
-  font-size: 10px;
+  font-size: 11px;
   color: var(--muted);
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -284,12 +289,12 @@ kbd {
   margin-left: 23px;
   display: flex;
   justify-content: space-between;
-  font-size: 9px;
+  font-size: 10px;
   color: var(--muted);
   opacity: 0.85;
 }
 .note-date > span {
-  font-size: 9px;
+  font-size: 10px;
 }
 .no-notes {
   color: var(--muted);
@@ -306,7 +311,7 @@ kbd {
   border-radius: 6px;
   padding: 10px 12px;
   margin: 10px 3px 20px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .new-note-button > span {
@@ -329,7 +334,7 @@ kbd {
   width: 100%;
   border-radius: 5px;
   text-align: left;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .sidebar-bottom > button:hover,
@@ -357,7 +362,7 @@ kbd {
   min-width: 0;
   border-radius: 5px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .settings-entry > button:hover {
   color: var(--green);
@@ -398,7 +403,7 @@ kbd {
   align-items: center;
   color: var(--muted);
   min-width: 0;
-  font-size: 11px;
+  font-size: 12px;
 }
 .breadcrumb > span {
   white-space: nowrap;
@@ -421,7 +426,7 @@ kbd {
   align-items: center;
   gap: 4px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   white-space: nowrap;
 }
 .save-status svg {
@@ -436,7 +441,7 @@ kbd {
   gap: 6px;
   padding: 7px 9px;
   border-radius: 5px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   border: 1px solid transparent;
 }
@@ -458,9 +463,9 @@ kbd {
   margin-bottom: 15px;
 }
 .eyebrow {
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 550;
-  letter-spacing: 1.6px;
+  letter-spacing: 1px;
   color: var(--muted);
   display: flex;
   align-items: center;
@@ -481,10 +486,10 @@ kbd {
   border: 0;
   background: none;
   width: 100%;
-  font-size: 30px;
-  font-weight: 620;
-  letter-spacing: -0.8px;
-  line-height: 1.5;
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.4px;
+  line-height: 1.4;
   padding: 0;
   min-width: 0;
 }
@@ -494,7 +499,7 @@ kbd {
   gap: 8px;
   margin-top: 12px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   white-space: nowrap;
 }
 .note-type {
@@ -529,27 +534,30 @@ kbd {
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   color: var(--muted);
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.7px;
   background: var(--paper);
 }
 .editor-grid {
+  --editor-line-height: 23px;
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr) 135px;
   position: relative;
-  font-family: "SFMono-Regular", Consolas, "Liberation Mono", "PingFang SC", monospace;
+  /* biome-ignore lint/complexity/noImportantStyles: Row sizing overrides the inline 34px estimate without changing editor logic. */
+  min-height: 0 !important;
+  font-family: var(--font-mono);
   font-size: 14px;
-  line-height: 34px;
+  line-height: var(--editor-line-height);
 }
 .line-numbers {
   color: var(--line-number);
-  padding-top: 15px;
+  padding: 15px 0 17px;
   text-align: center;
-  font-size: 9px;
+  font-size: 10px;
   user-select: none;
 }
 .line-numbers > div {
-  height: 34px;
+  height: var(--editor-line-height);
   border-left: 2px solid transparent;
 }
 .line-numbers .is-active {
@@ -570,13 +578,14 @@ kbd {
   width: max-content;
   min-width: 100%;
   tab-size: 4;
+  color: var(--expression);
 }
 .code-line {
-  height: 34px;
+  height: var(--editor-line-height);
 }
 .syntax-heading {
   color: var(--heading-green);
-  font-weight: 550;
+  font-weight: 400;
 }
 .syntax-comment {
   color: var(--comment);
@@ -621,7 +630,7 @@ kbd {
   top: 15px;
   left: 9px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: inherit;
 }
 .editor-results {
   padding: 15px 1px 0 8px;
@@ -629,7 +638,7 @@ kbd {
   border-left: 1px solid var(--subtle-border);
 }
 .result-row {
-  height: 34px;
+  height: var(--editor-line-height);
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -638,15 +647,14 @@ kbd {
 .line-result {
   font: inherit;
   color: var(--green);
-  font-size: 13px;
-  letter-spacing: -0.2px;
+  letter-spacing: 0;
   display: flex;
   align-items: center;
   gap: 5px;
   justify-content: flex-end;
   padding: 0 7px;
   width: 100%;
-  height: 28px;
+  height: var(--editor-line-height);
   border-radius: 4px;
 }
 .line-result > span {
@@ -656,6 +664,21 @@ kbd {
 }
 .line-result:hover {
   background: var(--sage);
+}
+[data-theme="midnight"] .line-result {
+  padding-inline: 1px;
+}
+[data-theme="midnight"] .line-result > span {
+  padding-inline: 6px;
+  border-radius: 7px;
+  line-height: 20px;
+}
+[data-theme="midnight"] .line-result:hover {
+  background: transparent;
+}
+[data-theme="midnight"] .line-result:is(:hover, :focus-visible) > span {
+  background: var(--green);
+  color: var(--inverse);
 }
 .copy-result-icon {
   opacity: 0;
@@ -669,7 +692,7 @@ kbd {
   align-items: center;
   gap: 4px;
   color: var(--error);
-  font-size: 10px;
+  font-size: 11px;
   cursor: help;
   padding: 0 8px;
 }
@@ -677,7 +700,7 @@ kbd {
   display: none;
   position: absolute;
   right: 0;
-  top: 30px;
+  top: var(--editor-line-height);
   background: var(--ink);
   color: var(--paper);
   padding: 8px 10px;
@@ -700,7 +723,7 @@ kbd {
   align-items: center;
   gap: 7px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   padding: 0;
 }
 .syntax-hint:hover {
@@ -746,7 +769,7 @@ kbd {
   height: 34px;
   flex-shrink: 0;
   border-top: 1px solid var(--border);
-  font-size: 9px;
+  font-size: 10px;
   color: var(--muted);
 }
 .statusbar > span {
@@ -782,7 +805,7 @@ kbd {
   height: 62px;
   padding: 0 20px;
   border-bottom: 1px solid var(--border);
-  font-size: 12px;
+  font-size: 13px;
 }
 .panel-heading > span {
   display: flex;
@@ -791,7 +814,7 @@ kbd {
   font-weight: 600;
 }
 .small-tag {
-  font-size: 8px;
+  font-size: 10px;
   color: var(--muted);
   font-weight: 400;
   padding: 3px 5px;
@@ -814,7 +837,7 @@ kbd {
   justify-content: space-between;
   color: var(--green);
   opacity: 0.8;
-  font-size: 9px;
+  font-size: 11px;
   letter-spacing: 0.5px;
   margin-bottom: 16px;
 }
@@ -825,8 +848,9 @@ kbd {
   width: 100%;
   color: var(--muted);
   padding: 2px 0;
-  font-family: "SFMono-Regular", Consolas, monospace;
-  font-size: 13px;
+  font-family: var(--font-mono);
+  font-size: 14px;
+  line-height: 23px;
 }
 .calc-answer {
   display: flex;
@@ -847,7 +871,7 @@ kbd {
   line-height: 1.5;
 }
 .calc-error {
-  font-size: 10px;
+  font-size: 11px;
   color: var(--error);
   min-height: 14px;
   padding-bottom: 4px;
@@ -903,7 +927,7 @@ kbd {
   align-items: center;
   gap: 7px;
   width: 100%;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--green);
   border: 1px solid var(--sage-border);
   border-radius: 6px;
@@ -921,7 +945,7 @@ kbd {
   justify-content: space-between;
   min-height: 36px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 .calc-history-heading > span {
   display: flex;
@@ -931,7 +955,7 @@ kbd {
 .history-empty {
   min-height: 80px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -954,8 +978,8 @@ kbd {
   justify-content: space-between;
   gap: 7px;
   border-bottom: 1px solid var(--subtle-border);
-  font-size: 10px;
-  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+  font-family: var(--font-mono);
   text-align: left;
 }
 .calc-history button:hover {
@@ -974,7 +998,7 @@ kbd {
 }
 .calculator-tip {
   text-align: center;
-  font-size: 9px;
+  font-size: 10px;
   color: var(--muted);
   margin-top: 26px;
 }
@@ -1051,7 +1075,7 @@ kbd {
   scrollbar-color: var(--strong-border) transparent;
 }
 .dialog::backdrop {
-  background: #16251a66;
+  background: #00000066;
   backdrop-filter: blur(3px);
 }
 .help-dialog {
@@ -1070,12 +1094,12 @@ kbd {
 }
 .settings-heading h2 {
   margin: 0 0 7px;
-  font-size: 23px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 500;
 }
 .settings-heading p {
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
 }
 .settings-section {
@@ -1093,7 +1117,7 @@ fieldset.settings-section {
 .settings-section legend {
   padding: 0;
   margin: 0 0 10px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 .settings-row {
@@ -1116,7 +1140,7 @@ fieldset.settings-section {
   border-radius: 6px;
   background: var(--key);
   color: var(--ink);
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
 }
 .secondary-button:hover:enabled {
@@ -1130,13 +1154,13 @@ fieldset.settings-section {
   background: var(--sidebar);
   color: var(--ink);
   overflow-wrap: anywhere;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.5;
 }
 .setting-hint,
 .setting-message {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.7;
   margin: 8px 0 0;
 }
@@ -1160,7 +1184,7 @@ fieldset.settings-section {
   border-radius: 6px;
   padding: 11px 6px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
 }
 .mode-option input {
   margin: 0;
@@ -1188,14 +1212,14 @@ fieldset.settings-section {
 }
 .about-brand span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 .about-details {
   display: flex;
   flex-direction: column;
   gap: 6px;
   margin: 0;
-  font-size: 10px;
+  font-size: 11px;
 }
 .about-details > div {
   display: flex;
@@ -1215,7 +1239,7 @@ fieldset.settings-section {
   gap: 5px;
   grid-column: 1 / -1;
   color: var(--green);
-  font-size: 10px;
+  font-size: 12px;
   text-decoration: none;
 }
 .project-link:hover {
@@ -1230,7 +1254,7 @@ fieldset.settings-section {
 }
 .settings-footer > span {
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.6;
 }
 .settings-footer > .save-error {
@@ -1239,7 +1263,7 @@ fieldset.settings-section {
 .settings-footer .primary-button {
   flex-shrink: 0;
   padding: 8px 21px;
-  font-size: 11px;
+  font-size: 12px;
 }
 .calculator-dialog {
   width: 328px;
@@ -1251,14 +1275,14 @@ fieldset.settings-section {
   gap: 12px;
 }
 .help-heading h2 {
-  font-size: 23px;
-  font-weight: 550;
+  font-size: 20px;
+  font-weight: 500;
   margin: 13px 0;
   letter-spacing: -0.5px;
 }
 .help-intro {
   color: var(--muted);
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1.8;
   margin: 0 0 20px;
 }
@@ -1275,26 +1299,27 @@ fieldset.settings-section {
   gap: 12px;
   border-bottom: 1px solid var(--border);
   text-align: left;
-  font-size: 11px;
+  font-size: 12px;
 }
 .syntax-examples button:hover {
   background: var(--sage);
 }
 .syntax-examples code {
   color: var(--muted);
-  font-size: 11px;
+  font-family: var(--font-mono);
+  font-size: 12px;
 }
 .syntax-examples strong {
   display: flex;
   align-items: center;
   gap: 7px;
   color: var(--green);
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 500;
 }
 .help-notes {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.9;
   margin-top: 20px;
 }
@@ -1307,7 +1332,7 @@ fieldset.settings-section {
   gap: 15px;
   margin-top: 24px;
   color: var(--muted);
-  font-size: 10px;
+  font-size: 11px;
 }
 .help-shortcuts kbd {
   border: 1px solid var(--border);
@@ -1361,11 +1386,7 @@ fieldset.settings-section {
     margin-right: 43px;
   }
   .editor-grid {
-    font-size: 14px;
     grid-template-columns: 42px minmax(0, 1fr) 165px;
-  }
-  .line-result {
-    font-size: 14px;
   }
   .editor-bottom {
     padding-left: 55px;
@@ -1386,7 +1407,7 @@ fieldset.settings-section {
     top: 62px;
     bottom: 0;
     width: 290px;
-    box-shadow: -15px 0 40px #16251a15;
+    box-shadow: -15px 0 40px #00000015;
   }
   .calculator-panel .panel-heading {
     height: 48px;
@@ -1433,7 +1454,7 @@ fieldset.settings-section {
     display: block;
     position: fixed;
     inset: 0;
-    background: #14251944;
+    background: #00000044;
     z-index: 11;
     cursor: default;
   }
@@ -1455,17 +1476,17 @@ fieldset.settings-section {
     padding: 28px 23px 24px;
   }
   .note-title {
-    font-size: 28px;
+    font-size: 22px;
   }
   .eyebrow {
-    font-size: 7px;
+    font-size: 9px;
     letter-spacing: 1px;
   }
   .note-kicker {
     margin-bottom: 10px;
   }
   .note-meta {
-    font-size: 9px;
+    font-size: 10px;
     gap: 6px;
   }
   .editor-scroll {
@@ -1477,11 +1498,15 @@ fieldset.settings-section {
   }
   .editor-grid {
     grid-template-columns: 29px minmax(0, 1fr) 112px;
-    font-size: 11px;
   }
   .line-result {
-    font-size: 11px;
     gap: 2px;
+    padding-right: 3px;
+  }
+  [data-theme="midnight"] .line-result {
+    padding-right: 0;
+  }
+  [data-theme="midnight"] .line-result > span {
     padding-right: 3px;
   }
   .editor-results {
@@ -1491,7 +1516,7 @@ fieldset.settings-section {
     padding: 14px 23px 18px;
   }
   .syntax-hint {
-    font-size: 9px;
+    font-size: 10px;
     gap: 5px;
   }
   .page-stamp {
@@ -1500,7 +1525,7 @@ fieldset.settings-section {
   }
   .statusbar {
     padding: 0 15px;
-    font-size: 8px;
+    font-size: 9px;
   }
   .calculator-panel {
     top: 56px;
