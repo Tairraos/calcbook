@@ -44,6 +44,8 @@ test("calculator display rounds to three places and switches at ten integer digi
     ["12345678901", "1.235e+10"],
     ["1e308", "1e+308"],
     ["1 CNY / 3", "0.333 CNY"],
+    ["16:9", "1.778"],
+    ["8 : 4", "2"],
   ]) {
     const result = calculateInput(source);
     assert.ok(result.ok, source);

@@ -95,6 +95,7 @@ function normalize(source: string): string {
   let expression = source
     .replace(/[×✕]/g, "*")
     .replace(/÷/g, "/")
+    .replace(/(?<=\d)\s*[:：]\s*(?=\d)/g, "/")
     .replace(/[−–]/g, "-")
     .replace(/[（[{]/g, "(")
     .replace(/[）\]}]/g, ")")
@@ -242,7 +243,10 @@ export function evaluateNotebook(text: string): LineResult[] {
       if (trimmed.startsWith("//")) return { source, kind: "note" };
       let expression = trimmed.split("//")[0].trim();
       const label = expression.search(/[:：]/);
-      if (label >= 0) expression = expression.slice(label + 1).trim();
+      // 冒号前是纯数字时是比率（16:9），不是“说明: 算式”的标签分隔符。
+      if (label >= 0 && !/^-?\d+(?:\.\d+)?$/.test(expression.slice(0, label).trim())) {
+        expression = expression.slice(label + 1).trim();
+      }
       const assignment = expression.match(/^([\p{L}_][\p{L}\p{N}_]*)\s*=\s*(.*)$/u);
       const name = assignment?.[1];
       if (assignment) expression = assignment[2];

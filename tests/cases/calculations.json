@@ -147,5 +147,17 @@
     "name": "exponent and magnitude limits",
     "source": "2^1001\n9^9^9\n1e309",
     "expected": ["!error", "!error", "!error"]
+  },
+  {
+    "name": "colon between numbers is a ratio",
+    "source": "16:9\n4:3\n8 : 4\n16：9\n画面比例: 16:9\n1:2 + 1",
+    "expected": [
+      "1.7777777777778",
+      "1.3333333333333",
+      "2",
+      "1.7777777777778",
+      "1.7777777777778",
+      "1.5"
+    ]
   }
 ]
