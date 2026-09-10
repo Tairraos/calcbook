@@ -80,17 +80,18 @@ input::placeholder {
   height: 100dvh;
   min-height: 520px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: 0px minmax(0, 1fr);
   overflow: hidden;
+  transition: grid-template-columns 220ms ease;
 }
 .app-shell.has-sidebar {
-  grid-template-columns: 234px minmax(0, 1fr);
+  grid-template-columns: 260px minmax(0, 1fr);
 }
 .app-shell.has-calculator {
-  grid-template-columns: minmax(0, 1fr) 290px;
+  grid-template-columns: 0px minmax(0, 1fr) 290px;
 }
 .app-shell.has-sidebar.has-calculator {
-  grid-template-columns: 234px minmax(0, 1fr) 290px;
+  grid-template-columns: 260px minmax(0, 1fr) 290px;
 }
 .icon-button {
   display: inline-flex;
@@ -108,12 +109,25 @@ input::placeholder {
   background: var(--hover);
 }
 .sidebar {
-  background: var(--sidebar);
-  border-right: 1px solid var(--border);
-  padding: 26px 16px 14px;
+  overflow: hidden;
+  min-width: 0;
+  /* 收起后延迟到动画结束再隐藏，避免内容突然消失；展开时立即可见。 */
+  visibility: hidden;
+  transition: visibility 0s 220ms;
+}
+.app-shell.has-sidebar .sidebar {
+  visibility: visible;
+  transition: visibility 0s;
+}
+.sidebar-inner {
+  width: 260px;
+  height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  padding: 26px 16px 14px;
+  background: var(--sidebar);
+  border-right: 1px solid var(--border);
 }
 .brand {
   display: flex;
@@ -129,15 +143,7 @@ input::placeholder {
 .brand-period {
   color: var(--green);
 }
-.sidebar-collapse {
-  margin-left: auto;
-  opacity: 0;
-}
-.sidebar:hover .sidebar-collapse,
-.sidebar-collapse:focus-visible {
-  opacity: 1;
-}
-.native-titlebar .sidebar {
+.native-titlebar .sidebar-inner {
   padding-top: 8px;
 }
 .native-titlebar .brand {
@@ -204,9 +210,6 @@ input::placeholder {
   font-size: 12px;
   outline: none;
   caret-color: var(--focus-caret);
-}
-.search-field input:focus-visible {
-  outline: none;
 }
 .search-field:focus-within kbd {
   opacity: 0.5;
@@ -875,7 +878,8 @@ kbd {
   outline: none;
   caret-color: var(--focus-caret);
 }
-.calc-expression:focus-visible {
+.calc-expression:focus-visible,
+.search-field input:focus-visible {
   outline: none;
 }
 .calc-answer {
@@ -1106,6 +1110,7 @@ kbd {
 }
 .help-dialog {
   width: 650px;
+  height: 565px;
   padding: 30px;
 }
 .settings-dialog {
@@ -1310,18 +1315,88 @@ fieldset.settings-section {
   color: var(--muted);
   font-size: 13px;
   line-height: 1.8;
-  margin: 0 0 20px;
+  margin: 0 0 2px;
+}
+.help-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 18px;
+}
+.help-tabs button {
+  padding: 7px 11px;
+  margin-bottom: -1px;
+  border-radius: 6px 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  border: 1px solid transparent;
+  border-bottom: 0;
+}
+.help-tabs button:hover {
+  color: var(--ink);
+  background: var(--hover);
+}
+.help-tabs button.is-active {
+  color: var(--green);
+  background: var(--sage);
+  border-color: var(--sage-border);
+}
+.help-tabpanel:focus-visible {
+  outline: none;
+}
+.help-tabpanel section {
+  margin-bottom: 18px;
+}
+.help-tabpanel h3 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.3px;
+}
+.help-tabpanel table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  text-align: left;
+}
+.help-tabpanel th {
+  color: var(--faint);
+  font-weight: 450;
+  padding: 0 8px 7px 0;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.help-tabpanel td {
+  padding: 8px 8px 8px 0;
+  border-bottom: 1px solid var(--subtle-border);
+  vertical-align: top;
+  color: var(--ink);
+  line-height: 1.6;
+}
+.help-tabpanel td:first-child {
+  white-space: nowrap;
+}
+.help-tabpanel td code,
+.help-tabpanel th code {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--expression);
+}
+.help-tabpanel td code {
+  background: var(--hover);
+  padding: 2px 5px;
+  border-radius: 4px;
 }
 .syntax-examples {
   display: flex;
   flex-direction: column;
-  border-top: 1px solid var(--border);
 }
 .syntax-examples button {
   display: grid;
   grid-template-columns: 86px 1fr auto;
   align-items: center;
-  padding: 13px 2px;
+  padding: 8px 2px;
   gap: 12px;
   border-bottom: 1px solid var(--border);
   text-align: left;
@@ -1331,7 +1406,7 @@ fieldset.settings-section {
   background: var(--sage);
 }
 .syntax-examples code {
-  color: var(--muted);
+  color: var(--expression);
   font-family: var(--font-mono);
   font-size: 12px;
 }
@@ -1419,12 +1494,13 @@ fieldset.settings-section {
   }
 }
 @media (max-width: 1150px) {
+  .app-shell,
   .app-shell.has-sidebar,
   .app-shell.has-sidebar.has-calculator {
-    grid-template-columns: 205px minmax(0, 1fr);
+    grid-template-columns: 230px minmax(0, 1fr);
   }
   .app-shell.has-calculator {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: 0px minmax(0, 1fr);
   }
   .calculator-panel {
     position: absolute;
@@ -1438,7 +1514,8 @@ fieldset.settings-section {
   .calculator-panel .panel-heading {
     height: 48px;
   }
-  .sidebar {
+  .sidebar-inner {
+    width: 230px;
     padding-left: 10px;
     padding-right: 10px;
   }
@@ -1448,9 +1525,6 @@ fieldset.settings-section {
   }
   .brand > span {
     font-size: 23px;
-  }
-  .sidebar-collapse {
-    display: none;
   }
   .topbar {
     padding-left: 22px;
@@ -1464,22 +1538,28 @@ fieldset.settings-section {
   .app-shell.has-sidebar.has-calculator {
     grid-template-columns: minmax(0, 1fr);
   }
+  /* 窄窗口侧栏是顶栏下方的抽屉，收起/展开按钮保持在顶栏可点。 */
   .sidebar {
     position: fixed;
-    inset: 0 auto 0 0;
+    inset: 56px auto 0 0;
     width: 240px;
     z-index: 12;
-    padding-top: 24px;
+    visibility: visible;
+    transform: translateX(-100%);
+    transition: transform 220ms ease;
     box-shadow: 20px 0 60px #0002;
   }
-  .sidebar-collapse {
-    display: inline-flex;
-    opacity: 1;
+  .app-shell.has-sidebar .sidebar {
+    transform: none;
+  }
+  .sidebar-inner {
+    width: 240px;
+    padding-top: 24px;
   }
   .sidebar-scrim {
     display: block;
     position: fixed;
-    inset: 0;
+    inset: 56px 0 0 0;
     background: #00000044;
     z-index: 11;
     cursor: default;
@@ -1627,6 +1707,10 @@ fieldset.settings-section {
 }
 @media (prefers-reduced-motion: reduce) {
   button {
+    transition: none;
+  }
+  .app-shell,
+  .sidebar {
     transition: none;
   }
 }

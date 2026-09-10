@@ -1,6 +1,5 @@
 import {
   ArrowDownToLine,
-  ArrowLeft,
   ArrowUpFromLine,
   BookOpen,
   Calculator as CalculatorIcon,
@@ -8,7 +7,6 @@ import {
   ChevronRight,
   CircleHelp,
   FileText,
-  Leaf,
   Menu,
   Moon,
   PanelLeftClose,
@@ -81,7 +79,7 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = workspace?.theme ?? "paper";
     document.documentElement.classList.toggle("native-titlebar", hasNativeTitlebar);
-    document.title = `${selected?.title || "Calcbook"} · Calcbook`;
+    document.title = `${selected?.title || "calcbook"} · calcbook`;
   }, [workspace?.theme, selected?.title]);
 
   useEffect(() => {
@@ -238,7 +236,7 @@ export default function App() {
     return (
       <main className="startup-screen">
         <img src="/favicon.svg" alt="" width="48" height="48" />
-        <h1>Calcbook</h1>
+        <h1>calcbook</h1>
         <p role="status">{error || "正在打开你的笔记…"}</p>
         {error && (
           <button className="primary-button" type="button" onClick={() => void load()}>
@@ -266,27 +264,10 @@ export default function App() {
     <div
       className={`app-shell ${sidebarOpen ? "has-sidebar" : ""} ${calculatorOpen && workspace.calculatorMode === "sidebar" ? "has-calculator" : ""}`}
     >
-      {sidebarOpen && (
-        <aside className="sidebar" aria-label="笔记导航">
+      <aside className="sidebar" aria-label="笔记导航">
+        <div className="sidebar-inner">
           <div className="brand" data-tauri-drag-region>
-            <img src="/favicon.svg" alt="" width="31" height="31" />
-            <span>
-              calcbook<span className="brand-period">.</span>
-            </span>
-            <IconButton
-              title="收起笔记列表"
-              className="sidebar-collapse"
-              onClick={() => setSidebarOpen(false)}
-            >
-              <PanelLeftClose size={16} />
-            </IconButton>
-          </div>
-          <div className="workspace-name">
-            <span className="workspace-avatar">小</span>
-            <div>
-              <strong>我的笔记空间</strong>
-              <span>给思路一点空间</span>
-            </div>
+            <span>calcbook</span>
           </div>
           <div className="search-field">
             <Search size={15} />
@@ -299,18 +280,6 @@ export default function App() {
             />
             <kbd>⌘ K</kbd>
           </div>
-          <button
-            type="button"
-            className={`all-notes ${!trashView ? "is-selected" : ""}`}
-            onClick={() => {
-              setTrashView(false);
-              setQuery("");
-            }}
-          >
-            <BookOpen size={16} />
-            <span>全部笔记</span>
-            <span className="count-badge">{notes.filter((note) => !note.trashed).length}</span>
-          </button>
           <div className="notebook-list-heading">
             <span>{trashView ? "废纸篓" : "我的笔记"}</span>
             <IconButton title="新建笔记" onClick={() => newNote()}>
@@ -399,8 +368,8 @@ export default function App() {
               </IconButton>
             </div>
           </div>
-        </aside>
-      )}
+        </div>
+      </aside>
       {sidebarOpen && (
         <button
           type="button"
@@ -413,11 +382,13 @@ export default function App() {
       <main className="notebook-main">
         <header className="topbar" data-tauri-drag-region>
           <div className="breadcrumb">
-            {!sidebarOpen && (
-              <IconButton title="展开笔记列表" onClick={() => setSidebarOpen(true)}>
-                <Menu size={18} />
-              </IconButton>
-            )}
+            <IconButton
+              title={sidebarOpen ? "收起笔记列表" : "展开笔记列表"}
+              aria-expanded={sidebarOpen}
+              onClick={() => setSidebarOpen(!sidebarOpen)}
+            >
+              {sidebarOpen ? <PanelLeftClose size={17} /> : <Menu size={18} />}
+            </IconButton>
             <BookOpen size={15} />
             <span>{trashView ? "废纸篓" : "我的笔记"}</span>
             <ChevronRight size={13} />
@@ -533,19 +504,6 @@ export default function App() {
               editorRef={editorRef}
               readOnly={selected.trashed}
             />
-            <div className="editor-bottom">
-              <button type="button" className="syntax-hint" onClick={() => setHelpOpen(true)}>
-                <span className="hint-icon">?</span>数字、文字，都可以写在这里
-                <span className="hint-link">
-                  语法速查
-                  <ArrowLeft size={12} />
-                </span>
-              </button>
-              <div className="page-stamp">
-                <Leaf size={17} strokeWidth={1.4} />
-                <span>A little space for a clearer mind.</span>
-              </div>
-            </div>
             <footer className="statusbar">
               <span>
                 <span className="status-dot" />
