@@ -31,6 +31,8 @@
   --error: #bd3f3f;
   --inverse: #ffffff;
   --selection: #73acd344;
+  --focus-caret: #000000;
+  --calc-screen-focus: #f5f7f1;
 }
 
 [data-theme="midnight"] {
@@ -65,4 +67,6 @@
   --error: #f17e79;
   --inverse: #27282d;
   --selection: #6cc4ee40;
+  --focus-caret: #ffffff;
+  --calc-screen-focus: #262a21;
 }

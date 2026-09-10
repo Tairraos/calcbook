@@ -187,6 +187,13 @@ input::placeholder {
   border-radius: 6px;
   color: var(--muted);
   background: var(--search-bg);
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
+}
+.search-field:focus-within {
+  background: var(--hover);
+  border-color: var(--strong-border);
 }
 .search-field input {
   background: none;
@@ -195,7 +202,14 @@ input::placeholder {
   width: 100%;
   min-width: 0;
   font-size: 12px;
-  outline-offset: 6px;
+  outline: none;
+  caret-color: var(--focus-caret);
+}
+.search-field input:focus-visible {
+  outline: none;
+}
+.search-field:focus-within kbd {
+  opacity: 0.5;
 }
 kbd {
   font-family: inherit;
@@ -607,7 +621,7 @@ kbd {
   resize: none;
   background: transparent;
   color: transparent;
-  caret-color: var(--ink);
+  caret-color: var(--focus-caret);
   font: inherit;
   line-height: inherit;
   letter-spacing: inherit;
@@ -831,6 +845,13 @@ kbd {
   padding: 15px 15px 0;
   min-height: 151px;
   margin-bottom: 15px;
+  transition:
+    background 140ms ease,
+    border-color 140ms ease;
+}
+.calc-screen:focus-within {
+  background: var(--calc-screen-focus);
+  border-color: var(--strong-border);
 }
 .calc-screen-caption {
   display: flex;
@@ -851,6 +872,11 @@ kbd {
   font-family: var(--font-mono);
   font-size: 14px;
   line-height: 23px;
+  outline: none;
+  caret-color: var(--focus-caret);
+}
+.calc-expression:focus-visible {
+  outline: none;
 }
 .calc-answer {
   display: flex;
