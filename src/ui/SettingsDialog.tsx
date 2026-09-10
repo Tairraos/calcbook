@@ -129,10 +129,9 @@ export function SettingsDialog({
 
       <section className="settings-section about-section" aria-labelledby="about-title">
         <div className="about-brand">
-          <img src="/favicon.svg" alt="" width="33" height="33" />
           <div>
             <h3 id="about-title">关于 Calcbook</h3>
-            <span>把计算写进笔记。</span>
+            <span>一个优雅的笔记计算器，象写字一样计算。</span>
           </div>
         </div>
         <dl className="about-details">
