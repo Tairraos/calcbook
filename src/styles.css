@@ -80,18 +80,8 @@ input::placeholder {
   height: 100dvh;
   min-height: 520px;
   display: grid;
-  grid-template-columns: 0px minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   overflow: hidden;
-  transition: grid-template-columns 220ms ease;
-}
-.app-shell.has-sidebar {
-  grid-template-columns: 260px minmax(0, 1fr);
-}
-.app-shell.has-calculator {
-  grid-template-columns: 0px minmax(0, 1fr) 260px;
-}
-.app-shell.has-sidebar.has-calculator {
-  grid-template-columns: 260px minmax(0, 1fr) 260px;
 }
 .icon-button {
   display: inline-flex;
@@ -108,16 +98,23 @@ input::placeholder {
   color: var(--ink);
   background: var(--hover);
 }
+/* 侧栏用自身宽度过渡收放（grid auto 列跟随），避免 grid-template-columns 过渡在媒体查询区间失效。 */
 .sidebar {
-  overflow: hidden;
+  width: 0;
   min-width: 0;
+  overflow: hidden;
   /* 收起后延迟到动画结束再隐藏，避免内容突然消失；展开时立即可见。 */
   visibility: hidden;
-  transition: visibility 0s 220ms;
+  transition:
+    width 220ms ease,
+    visibility 0s 220ms;
 }
 .app-shell.has-sidebar .sidebar {
+  width: 260px;
   visibility: visible;
-  transition: visibility 0s;
+  transition:
+    width 220ms ease,
+    visibility 0s;
 }
 .sidebar-inner {
   width: 260px;
@@ -143,11 +140,9 @@ input::placeholder {
 .brand-period {
   color: var(--green);
 }
+/* Overlay 标题栏下，侧栏内容整体从红绿灯下方开始，字标左对齐不再避让。 */
 .native-titlebar .sidebar-inner {
-  padding-top: 8px;
-}
-.native-titlebar .brand {
-  margin-left: 64px;
+  padding-top: 46px;
 }
 .native-titlebar .app-shell:not(.has-sidebar) .topbar {
   padding-left: 84px;
@@ -255,8 +250,23 @@ kbd {
   flex: 1;
   min-height: 50px;
   overflow: auto;
-  margin: 0 -1px;
+  margin: 0 -3px 0 -1px;
   padding: 1px;
+  scrollbar-width: thin;
+}
+/* 极细滚动条画进侧栏右侧留白，不压缩卡片内容；静止时隐藏，悬停列表才出现。 */
+.note-list::-webkit-scrollbar {
+  width: 3px;
+}
+.note-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+.note-list::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 3px;
+}
+.note-list:hover::-webkit-scrollbar-thumb {
+  background: var(--strong-border);
 }
 .note-card {
   display: flex;
@@ -398,6 +408,7 @@ kbd {
   flex-shrink: 0;
 }
 .notebook-main {
+  grid-column: 2;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -809,6 +820,8 @@ kbd {
   color: var(--error);
 }
 .calculator-panel {
+  grid-column: 3;
+  width: 260px;
   background: var(--calculator);
   border-left: 1px solid var(--border);
   min-height: 0;
@@ -1464,25 +1477,8 @@ fieldset.settings-section {
   }
 }
 @media (max-width: 1150px) {
-  .app-shell,
-  .app-shell.has-sidebar,
-  .app-shell.has-sidebar.has-calculator {
-    grid-template-columns: 230px minmax(0, 1fr);
-  }
-  .app-shell.has-calculator {
-    grid-template-columns: 0px minmax(0, 1fr);
-  }
-  .calculator-panel {
-    position: absolute;
-    z-index: 8;
-    right: 0;
-    top: 62px;
-    bottom: 0;
-    width: 260px;
-    box-shadow: -15px 0 40px #00000015;
-  }
-  .calculator-panel .panel-heading {
-    height: 48px;
+  .app-shell.has-sidebar .sidebar {
+    width: 230px;
   }
   .sidebar-inner {
     width: 230px;
@@ -1502,14 +1498,13 @@ fieldset.settings-section {
   }
 }
 @media (max-width: 760px) {
-  .app-shell,
-  .app-shell.has-sidebar,
-  .app-shell.has-calculator,
-  .app-shell.has-sidebar.has-calculator {
-    grid-template-columns: minmax(0, 1fr);
+  /* 固定抽屉不参与列宽（Chromium 会让 fixed 子元素按内容撑大 auto 列），第一列固定 0。 */
+  .app-shell {
+    grid-template-columns: 0px minmax(0, 1fr) auto;
   }
-  /* 窄窗口侧栏是顶栏下方的抽屉，收起/展开按钮保持在顶栏可点。 */
-  .sidebar {
+  /* 窄窗口侧栏是顶栏下方的固定抽屉，translateX 滑入滑出；计算器仍占右侧一列。 */
+  .sidebar,
+  .app-shell.has-sidebar .sidebar {
     position: fixed;
     inset: 56px auto 0 0;
     width: 240px;
@@ -1603,10 +1598,6 @@ fieldset.settings-section {
     padding: 0 15px;
     font-size: 9px;
   }
-  .calculator-panel {
-    top: 56px;
-    width: min(260px, 100vw);
-  }
   .help-dialog {
     padding: 22px;
   }
@@ -1650,7 +1641,6 @@ fieldset.settings-section {
   button {
     transition: none;
   }
-  .app-shell,
   .sidebar {
     transition: none;
   }

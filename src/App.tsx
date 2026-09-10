@@ -195,6 +195,19 @@ export default function App() {
     void resizeWindowBy(open ? 260 : -260).catch(() => {});
   }
 
+  // 窗口窄到放不下计算器列（结果列被挤没）时自动收起，把空间让给笔记。
+  // 这是用户 resize 引发的布局保护，不反向修改窗口尺寸。
+  useEffect(() => {
+    const tooNarrow = () => window.innerWidth <= 1020;
+    if (calculatorOpen && tooNarrow()) setCalculatorOpen(false);
+    if (!calculatorOpen) return;
+    const onResize = () => {
+      if (tooNarrow()) setCalculatorOpen(false);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, [calculatorOpen]);
+
   useEffect(() => {
     const shortcuts = (event: KeyboardEvent) => {
       if (event.isComposing || !(event.metaKey || event.ctrlKey)) return;
