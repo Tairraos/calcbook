@@ -370,7 +370,7 @@ dependencies = [
 
 [[package]]
 name = "calcbook"
-version = "0.2.1"
+version = "0.2.4"
 dependencies = [
  "serde",
  "serde_json",
@@ -2136,7 +2136,7 @@ checksum = "650eef8c711430f1a879fdd01d4745a7deea475becfb90269c06775983bbf086"
 
 [[package]]
 name = "num-conv"
-version = "0.2.2"
+version = "0.2.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "521739c6d2bac4aa25192232afe6841231376b2b26d4d9fae5ecf8ca5772e441"
 
