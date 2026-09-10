@@ -2,7 +2,6 @@ import { CornerDownLeft, Delete, History, Keyboard, RotateCcw, X } from "lucide-
 import { type Dispatch, type SetStateAction, useLayoutEffect, useRef } from "react";
 import { calculateInput } from "../domain/calculation.ts";
 import { type KeypadState, pressKeypad } from "../domain/keypad.ts";
-import type { CalculatorMode } from "../domain/notebook.ts";
 import { IconButton } from "./IconButton.tsx";
 
 const keys = [
@@ -50,14 +49,12 @@ export function Calculator({
   canInsert,
   state,
   setState,
-  mode,
 }: {
   onClose: () => void;
   onInsert: (expression: string) => void;
   canInsert: boolean;
   state: KeypadState;
   setState: Dispatch<SetStateAction<KeypadState>>;
-  mode: CalculatorMode;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const answerRef = useRef<HTMLOutputElement>(null);
@@ -77,10 +74,10 @@ export function Calculator({
     const text = answerTextRef.current;
     if (!answer || !text) return;
     const fit = () => {
-      text.style.fontSize = "38px";
+      text.style.fontSize = "34px";
       const width = text.getBoundingClientRect().width;
       if (width && answer.clientWidth)
-        text.style.fontSize = `${Math.min(38, Math.floor((38 * (answer.clientWidth - 2)) / width))}px`;
+        text.style.fontSize = `${Math.min(34, Math.floor((34 * (answer.clientWidth - 2)) / width))}px`;
     };
     fit();
     const observer = new ResizeObserver(fit);
@@ -127,8 +124,7 @@ export function Calculator({
               if (event.nativeEvent.isComposing) return;
               if (event.key === "Enter" || event.key === "=" || event.key === "Escape") {
                 event.preventDefault();
-                if (event.key === "Escape" && mode === "dialog") onClose();
-                else press(event.key);
+                press(event.key);
               } else if (
                 state.result !== null &&
                 (/^[\d.(+\-*/%]$/.test(event.key) || event.key === "Backspace") &&

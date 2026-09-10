@@ -1,11 +1,9 @@
-import { ExternalLink, FolderOpen, PanelRight, PanelsTopLeft, X } from "lucide-react";
+import { ExternalLink, FolderOpen, X } from "lucide-react";
 import { useState } from "react";
-import type { CalculatorMode } from "../domain/notebook.ts";
 import { Dialog } from "./Dialog.tsx";
 import { IconButton } from "./IconButton.tsx";
 
 export function SettingsDialog({
-  calculatorMode,
   directory,
   defaultDirectory,
   canChooseDirectory,
@@ -14,12 +12,10 @@ export function SettingsDialog({
   githubUrl,
   saveStatus,
   saveError,
-  onCalculatorModeChange,
   onChangeDirectory,
   onOpenProject,
   onClose,
 }: {
-  calculatorMode: CalculatorMode;
   directory: string;
   defaultDirectory: string;
   canChooseDirectory: boolean;
@@ -28,7 +24,6 @@ export function SettingsDialog({
   githubUrl: string;
   saveStatus: string;
   saveError: string;
-  onCalculatorModeChange: (mode: CalculatorMode) => void;
   onChangeDirectory: () => Promise<boolean>;
   onOpenProject: () => Promise<void>;
   onClose: () => void;
@@ -98,40 +93,11 @@ export function SettingsDialog({
         )}
       </section>
 
-      <fieldset className="settings-section" disabled={busy}>
-        <legend>简易计算器</legend>
-        <div className="calculator-options">
-          <label className={`mode-option ${calculatorMode === "sidebar" ? "is-selected" : ""}`}>
-            <input
-              type="radio"
-              name="calculator-mode"
-              value="sidebar"
-              checked={calculatorMode === "sidebar"}
-              onChange={() => onCalculatorModeChange("sidebar")}
-            />
-            <PanelRight size={17} />
-            <span>边栏显示</span>
-          </label>
-          <label className={`mode-option ${calculatorMode === "dialog" ? "is-selected" : ""}`}>
-            <input
-              type="radio"
-              name="calculator-mode"
-              value="dialog"
-              checked={calculatorMode === "dialog"}
-              onChange={() => onCalculatorModeChange("dialog")}
-            />
-            <PanelsTopLeft size={17} />
-            <span>弹窗显示</span>
-          </label>
-        </div>
-        <p className="setting-hint">从顶部打开计算器；弹窗模式下，点击外部任意位置即可关闭。</p>
-      </fieldset>
-
       <section className="settings-section about-section" aria-labelledby="about-title">
         <div className="about-brand">
           <div>
             <h3 id="about-title">关于 Calcbook</h3>
-            <span>一个优雅的笔记计算器，象写字一样计算。</span>
+            <span>一个优雅的笔记计算器，像写字一样计算。</span>
           </div>
         </div>
         <dl className="about-details">

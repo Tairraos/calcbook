@@ -4,6 +4,17 @@ import { parseWorkspace, type Workspace } from "../domain/notebook.ts";
 export const STORAGE_KEY = "calcbook.workspace.v1";
 export type StorageInfo = { directory: string; defaultDirectory: string; canChoose: boolean };
 export const hasNativeTitlebar = isTauri();
+export const isDesktopApp = isTauri();
+
+// 桌面版点击计算器开关时调整窗口宽度，保持笔记编辑区宽度不变；浏览器预览无窗口，直接跳过。
+export async function resizeWindowBy(delta: number): Promise<void> {
+  if (!isTauri()) return;
+  const { getCurrentWindow, LogicalSize } = await import("@tauri-apps/api/window");
+  const window = getCurrentWindow();
+  const physical = await window.innerSize();
+  const scale = await window.scaleFactor();
+  await window.setSize(new LogicalSize(physical.width / scale + delta, physical.height / scale));
+}
 
 export async function getStorageInfo(): Promise<StorageInfo> {
   return isTauri()

@@ -11,8 +11,6 @@ const LEGACY_THEMES: Record<string, Theme> = {
   forest: "midnight",
   graphite: "midnight",
 };
-export type CalculatorMode = "sidebar" | "dialog";
-
 export type Note = {
   id: string;
   title: string;
@@ -26,7 +24,6 @@ export type Workspace = {
   notes: Note[];
   activeId: string | null;
   theme: Theme;
-  calculatorMode: CalculatorMode;
 };
 
 export function createNote(id: string, now: string, title = "未命名笔记", body = ""): Note {
@@ -50,7 +47,7 @@ const examples = [
 
 export function createWorkspace(now: string, makeId: () => string): Workspace {
   const notes = examples.map((example) => createNote(makeId(), now, example.title, example.body));
-  return { version: 1, notes, activeId: notes[0].id, theme: "paper", calculatorMode: "sidebar" };
+  return { version: 1, notes, activeId: notes[0].id, theme: "paper" };
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -64,9 +61,7 @@ export function parseWorkspace(input: unknown): Workspace {
     throw new Error("笔记列表无效或超过 100 篇。");
   const theme = LEGACY_THEMES[input.theme as string] ?? input.theme;
   if (!THEME_IDS.includes(theme as Theme)) throw new Error("笔记主题配置无效。");
-  const calculatorMode = input.calculatorMode ?? "sidebar";
-  if (calculatorMode !== "sidebar" && calculatorMode !== "dialog")
-    throw new Error("计算器显示配置无效。");
+  // 旧工作区的 calculatorMode 字段已废弃：读取时忽略，下次保存自然清除。
   const ids = new Set<string>();
   const notes = input.notes.map((note): Note => {
     if (
@@ -100,5 +95,5 @@ export function parseWorkspace(input: unknown): Workspace {
   if (input.activeId !== null && (typeof input.activeId !== "string" || !ids.has(input.activeId))) {
     throw new Error("当前笔记引用无效，原数据已保留。");
   }
-  return { version: 1, notes, activeId: input.activeId, theme: theme as Theme, calculatorMode };
+  return { version: 1, notes, activeId: input.activeId, theme: theme as Theme };
 }

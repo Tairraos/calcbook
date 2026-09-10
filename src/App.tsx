@@ -32,10 +32,11 @@ import {
   downloadText,
   enableTitleDragRegions,
   hasNativeTitlebar,
+  isDesktopApp,
   openProject,
+  resizeWindowBy,
 } from "./platform/storage.ts";
 import { Calculator } from "./ui/Calculator.tsx";
-import { Dialog } from "./ui/Dialog.tsx";
 import { Editor } from "./ui/Editor.tsx";
 import { HelpDialog } from "./ui/HelpDialog.tsx";
 import { IconButton } from "./ui/IconButton.tsx";
@@ -53,8 +54,8 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 760);
   const [calculatorVisible, setCalculatorOpen] = useState<boolean | null>(null);
   const [calculatorState, setCalculatorState] = useState(initialKeypad);
-  const calculatorOpen =
-    calculatorVisible ?? (workspace?.calculatorMode === "sidebar" && window.innerWidth > 1150);
+  // 桌面版默认收起，打开时同步扩窗；浏览器预览宽屏时默认展开，无窗口可调。
+  const calculatorOpen = calculatorVisible ?? (!isDesktopApp && window.innerWidth > 1150);
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeLine, setActiveLine] = useState(0);
@@ -188,18 +189,22 @@ export default function App() {
     }
   }
 
+  // 打开计算器时窗口加宽一列，笔记区宽度不变；收起时还原。浏览器预览为 no-op。
+  function showCalculator(open: boolean) {
+    setCalculatorOpen(open);
+    void resizeWindowBy(open ? 260 : -260).catch(() => {});
+  }
+
   useEffect(() => {
     const shortcuts = (event: KeyboardEvent) => {
       if (event.isComposing || !(event.metaKey || event.ctrlKey)) return;
       if (event.key === ",") {
         event.preventDefault();
-        if (workspace?.calculatorMode === "dialog") setCalculatorOpen(false);
         setHelpOpen(false);
         setSettingsOpen(true);
         return;
       }
-      if (helpOpen || settingsOpen || (workspace?.calculatorMode === "dialog" && calculatorOpen))
-        return;
+      if (helpOpen || settingsOpen) return;
       if (event.key.toLowerCase() === "n") {
         event.preventDefault();
         newNote();
@@ -220,17 +225,7 @@ export default function App() {
     };
     window.addEventListener("keydown", shortcuts);
     return () => window.removeEventListener("keydown", shortcuts);
-  }, [
-    newNote,
-    flush,
-    results,
-    activeLine,
-    copy,
-    helpOpen,
-    settingsOpen,
-    workspace?.calculatorMode,
-    calculatorOpen,
-  ]);
+  }, [newNote, flush, results, activeLine, copy, helpOpen, settingsOpen]);
 
   if (!workspace)
     return (
@@ -248,21 +243,17 @@ export default function App() {
 
   const calculator = (
     <Calculator
-      onClose={() => setCalculatorOpen(false)}
-      onInsert={(expression) => {
-        if (workspace.calculatorMode === "dialog") setCalculatorOpen(false);
-        insertExpression(expression);
-      }}
+      onClose={() => showCalculator(false)}
+      onInsert={insertExpression}
       canInsert={!selected?.trashed}
       state={calculatorState}
       setState={setCalculatorState}
-      mode={workspace.calculatorMode}
     />
   );
 
   return (
     <div
-      className={`app-shell ${sidebarOpen ? "has-sidebar" : ""} ${calculatorOpen && workspace.calculatorMode === "sidebar" ? "has-calculator" : ""}`}
+      className={`app-shell ${sidebarOpen ? "has-sidebar" : ""} ${calculatorOpen ? "has-calculator" : ""}`}
     >
       <aside className="sidebar" aria-label="笔记导航">
         <div className="sidebar-inner">
@@ -409,7 +400,7 @@ export default function App() {
               type="button"
               className={`calculator-toggle ${calculatorOpen ? "is-active" : ""}`}
               aria-pressed={calculatorOpen}
-              onClick={() => setCalculatorOpen(!calculatorOpen)}
+              onClick={() => showCalculator(!calculatorOpen)}
             >
               <CalculatorIcon size={16} />
               <span>计算器</span>
@@ -529,22 +520,10 @@ export default function App() {
           </div>
         )}
       </main>
-      {calculatorOpen &&
-        (workspace.calculatorMode === "dialog" ? (
-          <Dialog
-            className="calculator-dialog"
-            label="简易计算器"
-            onClose={() => setCalculatorOpen(false)}
-          >
-            {calculator}
-          </Dialog>
-        ) : (
-          calculator
-        ))}
+      {calculatorOpen && calculator}
       {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} onInsert={insertExpression} />}
       {settingsOpen && storage && (
         <SettingsDialog
-          calculatorMode={workspace.calculatorMode}
           directory={storage.directory}
           defaultDirectory={storage.defaultDirectory}
           canChooseDirectory={storage.canChoose}
@@ -553,10 +532,6 @@ export default function App() {
           githubUrl={__GITHUB_URL__}
           saveStatus={status}
           saveError={error}
-          onCalculatorModeChange={(calculatorMode) => {
-            setCalculatorOpen(false);
-            update((before) => ({ ...before, calculatorMode }));
-          }}
           onChangeDirectory={changeDirectory}
           onOpenProject={() => openProject(__GITHUB_URL__)}
           onClose={() => setSettingsOpen(false)}

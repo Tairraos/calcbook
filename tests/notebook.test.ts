@@ -5,9 +5,15 @@ import { createWorkspace, MAX_NOTE_LENGTH, parseWorkspace } from "../src/domain/
 test("workspace round trip preserves notes, theme and trash", () => {
   const workspace = createWorkspace(new Date().toISOString(), () => crypto.randomUUID());
   workspace.theme = "midnight";
-  workspace.calculatorMode = "dialog";
   workspace.notes[0].trashed = true;
   assert.deepEqual(parseWorkspace(JSON.parse(JSON.stringify(workspace))), workspace);
+});
+test("removed calculatorMode field is ignored on read", () => {
+  const workspace = createWorkspace(new Date().toISOString(), () => crypto.randomUUID());
+  const migrated = parseWorkspace({ ...workspace, calculatorMode: "dialog" });
+  assert.equal(migrated.theme, workspace.theme);
+  assert.deepEqual(migrated.notes, workspace.notes);
+  assert.equal("calculatorMode" in migrated, false);
 });
 test("corrupt or unsupported workspaces are not accepted as empty", () => {
   const workspace = createWorkspace(new Date().toISOString(), () => crypto.randomUUID());
@@ -16,7 +22,6 @@ test("corrupt or unsupported workspaces are not accepted as empty", () => {
     {},
     { ...workspace, version: 2 },
     { ...workspace, theme: "unknown" },
-    { ...workspace, calculatorMode: "unknown" },
     { ...workspace, activeId: "missing" },
     { ...workspace, notes: [workspace.notes[0], workspace.notes[0]] },
   ]) {
@@ -35,9 +40,8 @@ test("legacy and removed themes migrate without changing notes", () => {
     ["forest", "midnight"],
     ["graphite", "midnight"],
   ]) {
-    const migrated = parseWorkspace({ ...workspace, theme: legacy, calculatorMode: undefined });
+    const migrated = parseWorkspace({ ...workspace, theme: legacy });
     assert.equal(migrated.theme, current);
-    assert.equal(migrated.calculatorMode, "sidebar");
     assert.deepEqual(migrated.notes, workspace.notes);
   }
 });
