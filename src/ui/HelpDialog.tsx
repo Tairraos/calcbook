@@ -224,12 +224,14 @@ function renderCell(text: string) {
   return arrowParts.map((part, partIndex) => {
     const segments = part.split("报错");
     const rendered = segments.map((segment, segmentIndex) => (
+      // biome-ignore lint/suspicious/noArrayIndexKey: 静态切分结果，位置即稳定键
       <span key={segmentIndex}>
         {segmentIndex > 0 && <span className="help-error-word">报错</span>}
         {segment}
       </span>
     ));
     return (
+      // biome-ignore lint/suspicious/noArrayIndexKey: 静态切分结果，位置即稳定键
       <span key={partIndex}>
         {partIndex > 0 && <span className="help-arrow">→</span>}
         {rendered}

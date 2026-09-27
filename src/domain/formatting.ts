@@ -315,7 +315,7 @@ function labelSplit(text: string): { label: string; expression: string } | null 
   if (index === -1) return null;
   const head = text.slice(0, index).trim();
   if (/^-?\d+(?:\.\d+)?$/.test(head)) return null; // 16:9 比率
-  return { label: `${head}${text[index]}`, expression: text.slice(index + 1).trim() };
+  return { label: `${head}:`, expression: text.slice(index + 1).trim() };
 }
 
 function collapseLine(text: string, settings: FormatSettings, convert: ConvertQuantity): string {

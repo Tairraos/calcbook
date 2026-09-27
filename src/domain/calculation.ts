@@ -59,7 +59,15 @@ const operators = new Set([
   "to",
 ]);
 const constants = new Set(["pi", "e"]);
-const summaries = new Set(["sum", "total", "合计", "avg", "average", "平均"]);
+export const SUMMARIES: ReadonlySet<string> = new Set([
+  "sum",
+  "total",
+  "合计",
+  "avg",
+  "average",
+  "平均",
+]);
+const summaries = SUMMARIES;
 const aliases: Record<string, string> = parseUnitAliases;
 const currencySymbols: Record<string, string> = {
   "¥": "CNY",

@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { convertUnitQuantity, evaluateNotebook } from "./domain/calculation.ts";
-import { parseNoteBody } from "./domain/format.ts";
+import { parseNoteBody, serializeNoteBody } from "./domain/format.ts";
 import type { FormatSettings } from "./domain/formatting.ts";
 import { formatNoteBody } from "./domain/formatting.ts";
 import {
@@ -198,11 +198,17 @@ export default function App() {
     setNotice("算式已写入笔记");
   }
 
+  // 导出与保存同构：算式行都带 "= 结果"，可直接用 Numi 打开。
   async function exportNote() {
     if (!selected) return;
     try {
-      if (await downloadText(`${selected.title || "未命名笔记"}.txt`, selected.body))
-        setNotice("已导出纯文本笔记");
+      if (
+        await downloadText(
+          `${selected.title || "未命名笔记"}.txt`,
+          serializeNoteBody(selected.body),
+        )
+      )
+        setNotice("已导出文本笔记（含结果）");
     } catch {
       setNotice("导出失败，请重试。");
     }
@@ -368,7 +374,18 @@ export default function App() {
     };
     window.addEventListener("keydown", shortcuts);
     return () => window.removeEventListener("keydown", shortcuts);
-  }, [newNote, flush, results, activeLine, copy, helpOpen, settingsOpen]);
+  }, [
+    newNote,
+    flush,
+    results,
+    activeLine,
+    copy,
+    helpOpen,
+    settingsOpen,
+    update,
+    selected?.body,
+    selected?.id,
+  ]);
 
   if (!workspace)
     return (

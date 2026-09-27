@@ -166,3 +166,25 @@ test("保存格式与 Numi 一致：注释、空行、标题原样保留", () =>
   assert.equal(lines[10], "年龄 = 2025 - 1976 = 49");
   assert.equal(lines[11], "BMR = (10 x 体重) + (6.25 × 身高) - (5 × 年龄) + 5 = 1,566.25");
 });
+
+test("导入时剥离保留字追加的结果与注释前结果", () => {
+  assert.equal(stripResult("sum = 60"), "sum");
+  assert.equal(stripResult("prev = 40"), "prev");
+  assert.equal(stripResult("合计 = 123"), "合计");
+  // 普通赋值不被剥离；单位保留名行也不剥离
+  assert.equal(stripResult("单价 = 128"), "单价 = 128");
+  // 单位保留名行：保存形态按赋值+结果剥到最后一层
+  assert.equal(stripResult("kg = 5 = 5"), "kg = 5");
+  // 行内注释：结果插在算式与注释之间，导入时剥离 = 结果
+  assert.equal(stripResult("5 × 2 = 10 //棒冰"), "5 × 2 //棒冰");
+  assert.equal(stripResult("小明 = 50 = 50"), "小明 = 50");
+  const lines = evaluateNotebook(parseNoteBody("5 × 2 = 10 //棒冰"));
+  assert.equal(lines[0].kind, "result");
+  assert.equal(lines[0].display, "10");
+  assert.match(lines[0].source, /棒冰/);
+  // 保存：结果插在算式与行内注释之间
+  assert.equal(serializeNoteBody("5 × 2 //棒冰"), "5 × 2 = 10 //棒冰");
+  assert.equal(serializeNoteBody("小明 = 50"), "小明 = 50 = 50");
+  assert.equal(serializeNoteBody("(18 + 24) × 3"), "(18 + 24) × 3 = 126");
+  assert.equal(serializeNoteBody("24\n36\nsum"), "24 = 24\n36 = 36\nsum = 60");
+});
