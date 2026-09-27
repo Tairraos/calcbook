@@ -14,9 +14,9 @@ export const CALCULATOR_THEME_EVENT = "calculator://theme";
 export const CALCULATOR_READY_EVENT = "calculator://ready";
 // 失焦 5 分钟未被再次激活自动收起。
 export const CALCULATOR_HIDE_AFTER_MS = 5 * 60 * 1000;
-export const NARROW_SIZE = { width: 300, height: 540 };
-// 侧栏 200px；计算器主体保持 300px 面积不变。
-export const WIDE_SIZE = { width: 600, height: 540 };
+export const NARROW_SIZE = { width: 300, height: 500 };
+// 侧栏 300px；计算器主体保持 300px 面积不变。
+export const WIDE_SIZE = { width: 600, height: 500 };
 
 export type CalculatorStatus = { visible: boolean; minimized: boolean };
 

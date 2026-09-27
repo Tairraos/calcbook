@@ -1,12 +1,29 @@
 [
-  { "name": "decimal arithmetic is exact", "source": "0.1 + 0.2", "expected": ["0.3"] },
-  { "name": "operator precedence", "source": "10 + 6 * 3\n(10 + 6) * 3", "expected": ["28", "48"] },
+  {
+    "name": "Chinese market units",
+    "source": "2里 to 公里\n1斤 + 10两\n3钱 to 克\n2石 to 升\n1里 + 500米",
+    "expected": ["1 km", "2 jin", "15 g", "200 l", "2 shili"]
+  },
+  {
+    "name": "decimal arithmetic is exact",
+    "source": "0.1 + 0.2",
+    "expected": ["0.3"]
+  },
+  {
+    "name": "operator precedence",
+    "source": "10 + 6 * 3\n(10 + 6) * 3",
+    "expected": ["28", "48"]
+  },
   {
     "name": "powers and negative numbers",
     "source": "2^3^2\n-2^2\n(-2)^2",
     "expected": ["512", "-4", "4"]
   },
-  { "name": "implicit multiplication", "source": "6(3)", "expected": ["18"] },
+  {
+    "name": "implicit multiplication",
+    "source": "6(3)",
+    "expected": ["18"]
+  },
   {
     "name": "x multiplication with numeric and grouped operands",
     "source": "2x3x4\n(2+3)x4\n2x-3\n2x(3+4)\n2e3x4",
@@ -47,7 +64,11 @@
     "source": "price=10\nprice+2\nprice=20\nprice+2",
     "expected": ["10", "12", "20", "22"]
   },
-  { "name": "subtract without spaces", "source": "price=10\nprice-2", "expected": ["10", "8"] },
+  {
+    "name": "subtract without spaces",
+    "source": "price=10\nprice-2",
+    "expected": ["10", "8"]
+  },
   {
     "name": "failed assignment invalidates old value",
     "source": "price=10\nprice=1/0\nprice+2",
@@ -78,7 +99,11 @@
     "source": "10\n1/0\nsum\n\n2\nsum",
     "expected": ["10", "!error", "!error", "!empty", "2", "2"]
   },
-  { "name": "empty aggregate is an error", "source": "sum", "expected": ["!error"] },
+  {
+    "name": "empty aggregate is an error",
+    "source": "sum",
+    "expected": ["!error"]
+  },
   {
     "name": "previous result",
     "source": "12 * 3\n// 注释\nprev+4",
@@ -89,7 +114,11 @@
     "source": "12\n1/0\nprev",
     "expected": ["12", "!error", "!error"]
   },
-  { "name": "compatible unit addition", "source": "2 km + 500 m", "expected": ["2.5 km"] },
+  {
+    "name": "compatible unit addition",
+    "source": "2 km + 500 m",
+    "expected": ["2.5 km"]
+  },
   {
     "name": "metric and imperial merge to metric",
     "source": "1 mile + 1 km\n1 lb + 1 kg\n1 gal + 1 l\n1 foot + 30 cm\n1 mile + 1 ft",
@@ -136,8 +165,16 @@
     "source": "¥30 + 12 CNY\n$10 + 5 USD",
     "expected": ["42 CNY", "15 USD"]
   },
-  { "name": "never invent exchange rates", "source": "10 USD to CNY", "expected": ["!error"] },
-  { "name": "incompatible units", "source": "2 m + 3 kg", "expected": ["!error"] },
+  {
+    "name": "never invent exchange rates",
+    "source": "10 USD to CNY",
+    "expected": ["!error"]
+  },
+  {
+    "name": "incompatible units",
+    "source": "2 m + 3 kg",
+    "expected": ["!error"]
+  },
   {
     "name": "safe numeric functions",
     "source": "sqrt(144)\nabs(-5)\nround(2.345,2)\nceil(2.1)\nfloor(2.9)",
@@ -153,7 +190,11 @@
     "source": "（12 + 8） × 2\n200 + 10％",
     "expected": ["40", "220"]
   },
-  { "name": "thousands separators", "source": "1,234,567 + 1", "expected": ["1234568"] },
+  {
+    "name": "thousands separators",
+    "source": "1,234,567 + 1",
+    "expected": ["1234568"]
+  },
   {
     "name": "non-finite values are errors",
     "source": "1/0\n0/0\nsqrt(-1)",

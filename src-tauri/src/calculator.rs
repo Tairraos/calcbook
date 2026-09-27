@@ -5,7 +5,7 @@ use tauri::{
 
 pub const CALCULATOR_LABEL: &str = "calculator";
 pub const NARROW_WIDTH: f64 = 300.0;
-pub const WINDOW_HEIGHT: f64 = 540.0;
+pub const WINDOW_HEIGHT: f64 = 500.0;
 pub const VISIBILITY_EVENT: &str = "calculator://visible";
 
 /// 计算器窗口状态：窗口按需创建，「关闭」实际是隐藏，webview 常驻以保留算式与历史。
@@ -78,18 +78,27 @@ pub fn toggle<R: Runtime>(app: &AppHandle<R>) -> Result<(bool, bool), String> {
     let _guard = state.0.lock().map_err(|_| "计算器忙，请重试")?;
     let window = ensure_calculator(app)?;
     if window.is_minimized().unwrap_or(false) {
+        // 最小化中：还原并聚焦。
         window
             .unminimize()
             .map_err(|error| format!("无法还原计算器：{error}"))?;
+        window
+            .set_focus()
+            .map_err(|error| format!("无法聚焦计算器：{error}"))?;
+        emit_visibility(app, true)?;
     } else if !window.is_visible().unwrap_or(false) {
+        // 未打开：显示并聚焦。
         window
             .show()
             .map_err(|error| format!("无法打开计算器：{error}"))?;
+        window
+            .set_focus()
+            .map_err(|error| format!("无法聚焦计算器：{error}"))?;
+        emit_visibility(app, true)?;
+    } else {
+        // 已开着：点击高亮按钮即收起。
+        hide(&window, app)?;
     }
-    window
-        .set_focus()
-        .map_err(|error| format!("无法聚焦计算器：{error}"))?;
-    emit_visibility(app, true)?;
     Ok(status(Some(&window)))
 }
 

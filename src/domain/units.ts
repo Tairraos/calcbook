@@ -31,6 +31,7 @@ const UNITS: Entry[] = [
   { en: "dm", zh: "分米", aliases: ["decimeter", "decimeters"] },
   { en: "m", zh: "米", aliases: ["meter", "meters", "公尺"] },
   { en: "km", zh: "公里", aliases: ["kilometer", "kilometers", "千米"] },
+  { en: "shili", zh: "里", aliases: ["市里"] },
   { en: "nmi", zh: "海里", aliases: ["nauticalmile", "nauticalmiles"] },
   { en: "angstrom", zh: "埃", aliases: ["angstroms"] },
   { en: "inch", zh: "英寸", aliases: ["inches"], imperial: true },
@@ -60,6 +61,7 @@ const UNITS: Entry[] = [
   { en: "dl", zh: "分升" },
   { en: "l", zh: "升", aliases: ["L", "liter", "liters", "litre", "litres", "公升"] },
   { en: "m3", zh: "立方米", aliases: ["cubicmeter", "cubicmeters"] },
+  { en: "shi", zh: "石", aliases: ["市石"] },
   { en: "cm3", zh: "立方厘米", aliases: ["cc", "cubiccentimeter", "cubiccentimeters"] },
   { en: "floz", zh: "液量盎司", aliases: ["fluidounce", "fluidounces"], imperial: true },
   { en: "cup", zh: "杯", aliases: ["cups"], imperial: true },
@@ -82,6 +84,7 @@ const UNITS: Entry[] = [
   { en: "t", zh: "吨", aliases: ["tonne", "tonnes", "公吨"] },
   { en: "jin", zh: "斤" },
   { en: "liang", zh: "两" },
+  { en: "qian", zh: "钱", aliases: ["市钱"] },
   { en: "lb", zh: "磅", aliases: ["pound", "pounds", "lbs", "lbm"], imperial: true },
   { en: "oz", zh: "盎司", aliases: ["ounce", "ounces"], imperial: true },
   { en: "stone", zh: "英石", aliases: ["stones"], imperial: true },
@@ -164,6 +167,9 @@ export function registerCustomUnits(math: {
   math.createUnit("mu", { definition: "666.6666666666667 m2" });
   math.createUnit("jin", { definition: "500 g" });
   math.createUnit("liang", { definition: "50 g" });
+  math.createUnit("qian", { definition: "5 g" });
+  math.createUnit("shili", { definition: "500 m" });
+  math.createUnit("shi", { definition: "100 L" });
   math.createUnit("cal", { definition: "4.184 J" });
   math.createUnit("knot", { definition: "1.852 km / h" });
 }
