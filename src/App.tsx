@@ -95,6 +95,7 @@ export default function App() {
   const resetActiveLine = useCallback(() => {
     activeLineRef.current = 0;
     setActiveLine(0);
+    formatUndoRef.current = null;
   }, []);
 
   useEffect(() => {
@@ -136,6 +137,9 @@ export default function App() {
 
   function patchNote(patch: Partial<Pick<Note, "body" | "title" | "trashed">>) {
     if (!selected) return;
+    // 用户手动编辑后，格式化的应用内撤销作废
+    if (patch.body !== undefined && patch.body !== formatUndoRef.current?.formatted)
+      formatUndoRef.current = null;
     update((before) => ({
       ...before,
       notes: before.notes.map((note) =>
@@ -226,17 +230,37 @@ export default function App() {
   }, []);
 
   const [formatOpen, setFormatOpen] = useState(false);
+  const formatUndoRef = useRef<{ noteId: string; previous: string; formatted: string } | null>(
+    null,
+  );
   const changeFormat = useCallback(
     (format: FormatSettings) => update((before) => ({ ...before, format })),
     [update],
   );
   // 格式化整篇：按当前格式设置重排所有行（含注释与空格规范）。
+  // 编辑器可编辑时用 execCommand 整篇替换，保留原生撤销栈（一次 Cmd+Z 即可还原）。
   const applyFormatting = useCallback(() => {
     if (!selected || !workspace) return;
     const formatted = formatNoteBody(selected.body, workspace.format, convertUnitQuantity);
     if (formatted === selected.body) {
       setNotice("格式已是最新的。");
       return;
+    }
+    // 应用内撤销：格式化走 React 状态替换，原生撤销栈不可靠，
+    // 记住格式化前的正文，Cmd+Z 在无后续编辑时直接恢复。
+    formatUndoRef.current = { noteId: selected.id, previous: selected.body, formatted };
+    const textarea = editorRef.current;
+    if (textarea && formatted.length <= MAX_NOTE_LENGTH) {
+      textarea.focus();
+      textarea.setSelectionRange(0, textarea.value.length);
+      try {
+        if (document.execCommand("insertText", false, formatted)) {
+          setNotice("已按格式设置整理本页算式");
+          return;
+        }
+      } catch {
+        // execCommand 不可用时走状态替换
+      }
     }
     update((before) => ({
       ...before,
@@ -295,6 +319,28 @@ export default function App() {
   useEffect(() => {
     const shortcuts = (event: KeyboardEvent) => {
       if (event.isComposing || !(event.metaKey || event.ctrlKey)) return;
+      // 格式化的应用内撤销：仅当笔记仍是格式化后的内容（用户未再编辑）
+      const formatUndo = formatUndoRef.current;
+      if (
+        !event.shiftKey &&
+        event.key.toLowerCase() === "z" &&
+        formatUndo &&
+        formatUndo.noteId === selected?.id &&
+        selected.body === formatUndo.formatted
+      ) {
+        event.preventDefault();
+        formatUndoRef.current = null;
+        update((before) => ({
+          ...before,
+          notes: before.notes.map((note) =>
+            note.id === formatUndo.noteId
+              ? { ...note, body: formatUndo.previous, updatedAt: new Date().toISOString() }
+              : note,
+          ),
+        }));
+        setNotice("已撤销格式化");
+        return;
+      }
       if (event.key === ",") {
         event.preventDefault();
         setHelpOpen(false);

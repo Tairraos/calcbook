@@ -286,12 +286,11 @@ export function formatLine(
 ): string {
   const trimmed = line.trim();
   if (!trimmed) return "";
-  // 注释起点：// 总是；# 在行首或空白后。
+  // 注释起点：// 与 # 作用一致，都是注释标记（本语言没有其它 # 用法）。
+  const hashIndex = trimmed.indexOf("#");
   let commentIndex = trimmed.indexOf("//");
-  const hashMatch = /^(\s*)(#)/.exec(trimmed) ?? /(\s)#/.exec(trimmed);
-  if (hashMatch) {
-    const hashIndex = hashMatch.index + hashMatch[1].length;
-    if (commentIndex === -1 || hashIndex < commentIndex) commentIndex = hashIndex;
+  if (hashIndex !== -1 && (commentIndex === -1 || hashIndex < commentIndex)) {
+    commentIndex = hashIndex;
   }
   if (commentIndex === -1) {
     const label = labelSplit(trimmed);
