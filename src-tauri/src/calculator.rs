@@ -15,7 +15,7 @@ fn ensure_calculator<R: Runtime>(app: &AppHandle<R>) -> Result<WebviewWindow<R>,
     if let Some(window) = app.get_webview_window(CALCULATOR_LABEL) {
         return Ok(window);
     }
-    let mut builder = WebviewWindowBuilder::new(
+    let builder = WebviewWindowBuilder::new(
         app,
         CALCULATOR_LABEL,
         WebviewUrl::App("index.html?view=calculator".into()),
@@ -30,24 +30,36 @@ fn ensure_calculator<R: Runtime>(app: &AppHandle<R>) -> Result<WebviewWindow<R>,
     .maximizable(false)
     // 宽高固定：窄态 300×540，展开最近计算后由前端切到 500×540，用户不能手动 resize。
     .resizable(false);
-    // 默认出现在主窗口正中间；主窗不存在（测试或异常）时用系统默认位置。
-    if let Some(main) = app.get_webview_window("main") {
-        if let (Ok(position), Ok(size), Ok(scale)) = (
-            main.outer_position(),
-            main.outer_size(),
-            main.scale_factor(),
-        ) {
-            // 窗口尺寸是逻辑单位，先按主窗缩放比换算成物理像素再求中心。
-            let width = (NARROW_WIDTH * scale) as i32;
-            let height = (WINDOW_HEIGHT * scale) as i32;
-            let x = position.x + (size.width as i32 - width) / 2;
-            let y = (position.y + (size.height as i32 - height) / 2).max(0);
-            builder = builder.position(x as f64 / scale, y as f64 / scale);
+    let window = builder
+        .build()
+        .map_err(|error| format!("无法打开计算器窗口：{error}"))?;
+    center_on_main(app, &window)?;
+    Ok(window)
+}
+
+/// 把计算器窗口的中心对准主窗口中心；主窗不存在（测试或异常）时不动。
+fn center_on_main<R: Runtime>(app: &AppHandle<R>, window: &WebviewWindow<R>) -> Result<(), String> {
+    let Some(main) = app.get_webview_window("main") else {
+        return Ok(());
+    };
+    if let (Ok(position), Ok(size), Ok(scale)) = (
+        main.outer_position(),
+        main.outer_size(),
+        main.scale_factor(),
+    ) {
+        if let Ok(self_size) = window.outer_size() {
+            // outer_* 是物理像素，set_position 接收逻辑单位，按主窗缩放比换算。
+            let x = position.x + (size.width as i32 - self_size.width as i32) / 2;
+            let y = (position.y + (size.height as i32 - self_size.height as i32) / 2).max(0);
+            window
+                .set_position(tauri::LogicalPosition::new(
+                    x as f64 / scale,
+                    y as f64 / scale,
+                ))
+                .map_err(|error| format!("无法定位计算器窗口：{error}"))?;
         }
     }
-    builder
-        .build()
-        .map_err(|error| format!("无法打开计算器窗口：{error}"))
+    Ok(())
 }
 
 pub fn status<R: Runtime>(window: Option<&WebviewWindow<R>>) -> (bool, bool) {
@@ -87,7 +99,8 @@ pub fn toggle<R: Runtime>(app: &AppHandle<R>) -> Result<(bool, bool), String> {
             .map_err(|error| format!("无法聚焦计算器：{error}"))?;
         emit_visibility(app, true)?;
     } else if !window.is_visible().unwrap_or(false) {
-        // 未打开：显示并聚焦。
+        // 未打开（含被关闭后再次打开）：重新居中到主窗，再显示并聚焦。
+        center_on_main(app, &window)?;
         window
             .show()
             .map_err(|error| format!("无法打开计算器：{error}"))?;

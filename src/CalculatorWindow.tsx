@@ -16,6 +16,7 @@ import {
   enableTitleDragRegions,
   hideCalculatorWindow,
   isDesktopApp,
+  NARROW_SIZE,
   readStoredTheme,
   WIDE_SIZE,
 } from "./platform/storage.ts";
@@ -119,7 +120,7 @@ export function CalculatorWindow() {
     setHistoryOpen((open) => {
       const next = !open;
       if (isDesktopApp) {
-        const size = next ? WIDE_SIZE : { width: 300, height: 540 };
+        const size = next ? WIDE_SIZE : NARROW_SIZE;
         void getCurrentWindow()
           .setSize(new LogicalSize(size.width, size.height))
           .catch(() => {});
