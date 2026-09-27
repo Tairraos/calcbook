@@ -21,10 +21,11 @@ src-tauri/      ← invoke（固定命令、系统路径、原子写入、保存
 | `src/domain/format.ts` | Numi 兼容 txt 的行级序列化与导入剥离 | DOM、I/O、React、重新实现计算语义 |
 | `src/domain/keypad.ts` | 普通计算器的确定性状态转换 | 自己实现第二套数学语义 |
 | `src/domain/notebook.ts` | 工作区结构、旧主题迁移、两套主题与显示偏好校验 | 获取时间、生成 ID、读写数据 |
-| `src/ui/` | 原生 textarea 镜像、结果、按键、帮助与设置 dialog | Tauri、localStorage、文件系统 |
+| `src/ui/` | 原生 textarea 镜像、结果、按键、计算器子窗口、帮助与设置 dialog | 直接读写文件系统 |
 | `src/platform/storage.ts` | 平台分支、数据校验、关闭保护、导入导出、目录选择、打开项目链接 | 组件状态、业务计算 |
 | `src/useWorkspace.ts` | 先读后写、串行保存、成功/失败状态 | 静默吞掉最终保存失败 |
 | `src-tauri/src/storage.rs` | 持久化、备份、旧路径迁移、配置提交与目录切换 | 使用前端提供的数据路径 |
+| `src-tauri/src/calculator.rs` | 计算器子窗口的创建、显隐、关闭语义（隐藏）与主窗销毁联动 | 把窗口句柄交给前端 |
 
 `scripts/check-repo.mjs` 通过 TypeScript AST 检查静态/动态 import、平台 API 越界和危险执行。边界内不强制仓储接口、依赖注入、全局 store 或额外的分层。
 
@@ -62,7 +63,7 @@ src-tauri/      ← invoke（固定命令、系统路径、原子写入、保存
 
 生产 CSP 只允许打包资源与 Tauri IPC。没有网络访问、遥测、远程字体或用户 HTML 渲染。表达式不是 JavaScript：mathjs 节点类型、运算符、函数、符号逐一校验，并限制长度、深度、节点数和指数。
 
-Rust 暴露七个固定命令：读取、保存、导出、导入、读取存储位置、选择存储目录、打开项目链接。导出、导入与目录选择均使用系统对话框；前端不能直接给出任意文件路径。GitHub 通过原生 opener 打开固定项目地址，不授予前端任意 shell 权限。窗口权限只覆盖本地 `main` 窗口。
+Rust 暴露十个固定命令：读取、保存、导出、导入、计算器开关、计算器隐藏、计算器状态、读取存储位置、选择存储目录、打开项目链接。导出、导入与目录选择均使用系统对话框；前端不能直接给出任意文件路径。GitHub 通过原生 opener 打开固定项目地址，不授予前端任意 shell 权限。窗口权限只覆盖本地 `main` 窗口。
 
 关于信息由 Vite 在构建时注入版本、UTC 构建时间和 GitHub URL；界面按用户本地时间显示。版本来源为 package.json，仓库检查要求它与 Tauri/Cargo 版本一致。
 

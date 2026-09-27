@@ -1,3 +1,4 @@
+import { emit, listen } from "@tauri-apps/api/event";
 import {
   ArrowDownToLine,
   ArrowUpFromLine,
@@ -21,7 +22,6 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { evaluateNotebook } from "./domain/calculation.ts";
 import { parseNoteBody } from "./domain/format.ts";
-import { initialKeypad } from "./domain/keypad.ts";
 import {
   createNote,
   MAX_NOTE_LENGTH,
@@ -31,15 +31,18 @@ import {
 } from "./domain/notebook.ts";
 import { rewriteLineUnits, type UnitMode } from "./domain/units.ts";
 import {
+  CALCULATOR_INSERT_EVENT,
+  CALCULATOR_THEME_EVENT,
+  CALCULATOR_VISIBILITY_EVENT,
+  calculatorStatus,
   downloadText,
   enableTitleDragRegions,
   hasNativeTitlebar,
   importNoteFile,
   isDesktopApp,
   openProject,
-  resizeWindowBy,
+  toggleCalculator,
 } from "./platform/storage.ts";
-import { Calculator } from "./ui/Calculator.tsx";
 import { Editor } from "./ui/Editor.tsx";
 import { HelpDialog } from "./ui/HelpDialog.tsx";
 import { IconButton } from "./ui/IconButton.tsx";
@@ -55,10 +58,8 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [trashView, setTrashView] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 760);
-  const [calculatorVisible, setCalculatorOpen] = useState<boolean | null>(null);
-  const [calculatorState, setCalculatorState] = useState(initialKeypad);
-  // 桌面版默认收起，打开时同步扩窗；浏览器预览宽屏时默认展开，无窗口可调。
-  const calculatorOpen = calculatorVisible ?? (!isDesktopApp && window.innerWidth > 1150);
+  // 计算器是独立子窗口：visible 由 Rust 事件推送，浏览器预览恒为关。
+  const [calculatorVisible, setCalculatorVisible] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeLine, setActiveLine] = useState(0);
@@ -295,24 +296,38 @@ export default function App() {
     [update],
   );
 
-  // 打开计算器时窗口加宽一列，笔记区宽度不变；收起时还原。浏览器预览为 no-op。
-  function showCalculator(open: boolean) {
-    setCalculatorOpen(open);
-    void resizeWindowBy(open ? 260 : -260).catch(() => {});
-  }
-
-  // 窗口窄到放不下计算器列（结果列被挤没）时自动收起，把空间让给笔记。
-  // 这是用户 resize 引发的布局保护，不反向修改窗口尺寸。
+  // 计算器子窗口状态：初始查询一次，之后由 Rust 在显示/隐藏时推送。
   useEffect(() => {
-    const tooNarrow = () => window.innerWidth <= 1020;
-    if (calculatorOpen && tooNarrow()) setCalculatorOpen(false);
-    if (!calculatorOpen) return;
-    const onResize = () => {
-      if (tooNarrow()) setCalculatorOpen(false);
+    if (!isDesktopApp) return;
+    void calculatorStatus()
+      .then((status) => setCalculatorVisible(status.visible))
+      .catch(() => {});
+    const unlisten = listen<boolean>(CALCULATOR_VISIBILITY_EVENT, (event) => {
+      setCalculatorVisible(event.payload === true);
+    });
+    return () => {
+      void unlisten.then((dispose) => dispose());
     };
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, [calculatorOpen]);
+  }, []);
+
+  // 切换主题时同步给计算器子窗口。
+  useEffect(() => {
+    if (!isDesktopApp) return;
+    void emit(CALCULATOR_THEME_EVENT, workspace?.theme ?? "paper").catch(() => {});
+  }, [workspace?.theme]);
+
+  // 计算器「写入当前笔记」：经事件送达主窗，插入当前行之后。
+  const insertRef = useRef(insertExpression);
+  insertRef.current = insertExpression;
+  useEffect(() => {
+    if (!isDesktopApp) return;
+    const unlisten = listen<string>(CALCULATOR_INSERT_EVENT, (event) => {
+      insertRef.current(event.payload);
+    });
+    return () => {
+      void unlisten.then((dispose) => dispose());
+    };
+  }, []);
 
   useEffect(() => {
     const shortcuts = (event: KeyboardEvent) => {
@@ -360,20 +375,8 @@ export default function App() {
       </main>
     );
 
-  const calculator = (
-    <Calculator
-      onClose={() => showCalculator(false)}
-      onInsert={insertExpression}
-      canInsert={!selected?.trashed}
-      state={calculatorState}
-      setState={setCalculatorState}
-    />
-  );
-
   return (
-    <div
-      className={`app-shell ${sidebarOpen ? "has-sidebar" : ""} ${calculatorOpen ? "has-calculator" : ""}`}
-    >
+    <div className={`app-shell ${sidebarOpen ? "has-sidebar" : ""}`}>
       <aside className="sidebar" aria-label="笔记导航">
         <div className="sidebar-inner">
           <div className="brand" data-tauri-drag-region>
@@ -518,9 +521,18 @@ export default function App() {
             </span>
             <button
               type="button"
-              className={`calculator-toggle ${calculatorOpen ? "is-active" : ""}`}
-              aria-pressed={calculatorOpen}
-              onClick={() => showCalculator(!calculatorOpen)}
+              className={`calculator-toggle ${calculatorVisible ? "is-open" : ""}`}
+              aria-pressed={calculatorVisible}
+              title={calculatorVisible ? "计算器窗口已打开" : "打开计算器窗口"}
+              onClick={() => {
+                if (!isDesktopApp) {
+                  setNotice("计算器窗口仅在桌面版可用。");
+                  return;
+                }
+                void toggleCalculator()
+                  .then((status) => setCalculatorVisible(status.visible))
+                  .catch(() => setNotice("无法打开计算器窗口，请重试。"));
+              }}
             >
               <CalculatorIcon size={16} />
               <span>计算器</span>
@@ -641,7 +653,6 @@ export default function App() {
           </div>
         )}
       </main>
-      {calculatorOpen && calculator}
       {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} onInsert={insertExpression} />}
       {settingsOpen && storage && (
         <SettingsDialog

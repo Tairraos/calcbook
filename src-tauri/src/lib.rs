@@ -1,3 +1,4 @@
+mod calculator;
 mod storage;
 
 use std::{path::PathBuf, sync::Mutex};
@@ -114,6 +115,30 @@ async fn choose_storage_directory(app: tauri::AppHandle) -> Result<Option<Storag
 }
 
 #[tauri::command]
+fn toggle_calculator(app: tauri::AppHandle) -> Result<CalculatorStatus, String> {
+    let (visible, minimized) = calculator::toggle(&app)?;
+    Ok(CalculatorStatus { visible, minimized })
+}
+
+#[tauri::command]
+fn hide_calculator(app: tauri::AppHandle) -> Result<(), String> {
+    calculator::hide_calculator(&app)
+}
+
+#[tauri::command]
+fn calculator_state(app: tauri::AppHandle) -> Result<CalculatorStatus, String> {
+    let (visible, minimized) = calculator::state(&app)?;
+    Ok(CalculatorStatus { visible, minimized })
+}
+
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CalculatorStatus {
+    visible: bool,
+    minimized: bool,
+}
+
+#[tauri::command]
 fn open_project(app: tauri::AppHandle) -> Result<(), String> {
     app.opener()
         .open_url("https://github.com/Tairraos/calcbook", None::<&str>)
@@ -169,11 +194,16 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .manage(StoreLock(Mutex::new(())))
+        .manage(calculator::CalculatorLock(Mutex::new(())))
+        .on_window_event(calculator::on_window_event)
         .invoke_handler(tauri::generate_handler![
             load_workspace,
             save_workspace,
             export_note,
             import_note,
+            toggle_calculator,
+            hide_calculator,
+            calculator_state,
             storage_info,
             choose_storage_directory,
             open_project

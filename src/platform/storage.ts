@@ -7,14 +7,41 @@ export type StorageInfo = { directory: string; defaultDirectory: string; canChoo
 export const hasNativeTitlebar = isTauri();
 export const isDesktopApp = isTauri();
 
-// 桌面版点击计算器开关时调整窗口宽度，保持笔记编辑区宽度不变；浏览器预览无窗口，直接跳过。
-export async function resizeWindowBy(delta: number): Promise<void> {
+// 计算器独立窗口：窗口由 Rust 按需创建，「关闭」即隐藏，状态常驻到 app 退出。
+export const CALCULATOR_INSERT_EVENT = "calculator://insert";
+export const CALCULATOR_VISIBILITY_EVENT = "calculator://visible";
+export const CALCULATOR_THEME_EVENT = "calculator://theme";
+// 失焦 5 分钟未被再次激活自动收起。
+export const CALCULATOR_HIDE_AFTER_MS = 5 * 60 * 1000;
+export const NARROW_SIZE = { width: 300, height: 540 };
+export const WIDE_SIZE = { width: 460, height: 540 };
+
+export type CalculatorStatus = { visible: boolean; minimized: boolean };
+
+export async function toggleCalculator(): Promise<CalculatorStatus> {
+  if (!isTauri()) throw new Error("计算器窗口仅在桌面版可用。");
+  return invoke("toggle_calculator");
+}
+
+export async function calculatorStatus(): Promise<CalculatorStatus> {
+  if (!isTauri()) return { visible: false, minimized: false };
+  return invoke("calculator_state");
+}
+
+export async function hideCalculatorWindow(): Promise<void> {
   if (!isTauri()) return;
-  const { getCurrentWindow, LogicalSize } = await import("@tauri-apps/api/window");
-  const window = getCurrentWindow();
-  const physical = await window.innerSize();
-  const scale = await window.scaleFactor();
-  await window.setSize(new LogicalSize(physical.width / scale + delta, physical.height / scale));
+  await invoke("hide_calculator");
+}
+
+// 计算器子窗口启动时读取工作区配色；主题变化经 CALCULATOR_THEME_EVENT 增量同步。
+export function readStoredTheme(): string {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    const theme = raw ? (JSON.parse(raw)?.theme ?? "paper") : "paper";
+    return theme === "midnight" ? "midnight" : "paper";
+  } catch {
+    return "paper";
+  }
 }
 
 export async function getStorageInfo(): Promise<StorageInfo> {

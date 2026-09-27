@@ -473,8 +473,12 @@ kbd {
   color: var(--muted);
   border: 1px solid transparent;
 }
-.calculator-toggle:hover,
-.calculator-toggle.is-active {
+.calculator-toggle:hover {
+  background: var(--hover);
+  color: var(--ink);
+}
+/* 子窗口开着（含最小化）时按钮高亮绿。 */
+.calculator-toggle.is-open {
   background: var(--sage);
   color: var(--green);
   border-color: var(--sage-border);
@@ -819,40 +823,59 @@ kbd {
 .error-count {
   color: var(--error);
 }
-.calculator-panel {
-  grid-column: 3;
-  width: 260px;
+/* 计算器独立窗口：工具行留出 macOS 红绿灯位置，主体 + 可选的最近计算侧栏。 */
+.calculator-window {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
   background: var(--calculator);
-  border-left: 1px solid var(--border);
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
+  overflow: hidden;
 }
-.panel-heading {
+.calc-toolbar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  height: 62px;
-  padding: 0 20px;
-  border-bottom: 1px solid var(--border);
+  gap: 6px;
+  height: 46px;
+  padding: 0 10px 0 0;
+  flex-shrink: 0;
+}
+.calc-toolbar-spacer {
+  width: 74px;
+  flex-shrink: 0;
+}
+.calc-toolbar-title {
+  flex: 1;
+  text-align: center;
   font-size: 13px;
-}
-.panel-heading > span {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   font-weight: 600;
 }
-.small-tag {
-  font-size: 10px;
-  color: var(--muted);
-  font-weight: 400;
-  padding: 3px 5px;
-  border-radius: 3px;
-  border: 1px solid var(--border);
-}
 .calculator-inner {
-  padding: 20px 16px 18px;
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+.calc-main {
+  /* 固定 300px：展开最近计算时窗口加宽，计算器主体面积不变。 */
+  width: 300px;
+  flex: none;
+  padding: 4px 16px 18px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.calc-history-sidebar {
+  width: 160px;
+  flex: none;
+  border-left: 1px solid var(--border);
+  padding: 4px 10px 12px;
+  overflow-y: auto;
+}
+.calc-history-sidebar .calc-history {
+  max-height: none;
+}
+.calc-history-sidebar .calc-history button span {
+  overflow-wrap: anywhere;
 }
 .calc-screen {
   background: var(--screen);
@@ -1038,12 +1061,6 @@ kbd {
   color: var(--green);
   font-weight: 500;
   white-space: nowrap;
-}
-.calculator-tip {
-  text-align: center;
-  font-size: 10px;
-  color: var(--muted);
-  margin-top: 26px;
 }
 .error-banner,
 .trash-banner {

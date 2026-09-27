@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "calculator-window",
+  "description": "计算器子窗口：监听主题与可见性事件，展开最近计算时调整自身尺寸。",
+  "windows": ["calculator"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-size",
+    "core:window:allow-inner-size"
+  ]
+}
