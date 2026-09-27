@@ -12,7 +12,9 @@ import {
   type Unit,
 } from "mathjs";
 import {
+  caseUnitAliases,
   cancelSameDimension,
+  isKnownUnitLower,
   parseUnitAliases,
   preferMetric,
   registerCustomUnits,
@@ -97,7 +99,9 @@ function normalize(source: string): string {
       (match, number: string) => `${number} ${currencySymbols[match[0]]}`,
     )
     .replace(/(?<=\d),(?=\d{3}(?:\D|$))/g, "")
-    .replace(/[\p{L}_][\p{L}\p{N}_]*/gu, (word) => aliases[word] ?? word)
+    .replace(/[\p{L}_][\p{L}\p{N}_]*/gu, (word) =>
+        aliases[word] ?? aliases[word.toLowerCase()] ?? caseUnitAliases[word.toLowerCase()] ?? word,
+      )
     .replace(/\b(?:in|into|as)\b/g, "to")
     .replace(/\bplus\b/g, "+")
     .replace(/\bminus\b/g, "-")
@@ -189,8 +193,18 @@ function validateTree(tree: MathNode, scope: Scope): UnitSides {
   return sides;
 }
 
+// 结果里的英文单位统一成小写缩写（规则允许保留英文时）；小写形式经单位表可重新解析。
+function lowercaseUnitSuffix(formatted: string): string {
+  const split = formatted.indexOf(" ");
+  if (split === -1) return formatted;
+  const suffix = formatted.slice(split + 1).replace(/([A-Za-z][A-Za-z0-9]*)/g, (token) =>
+    isKnownUnitLower(token.toLowerCase()) ? token.toLowerCase() : token,
+  );
+  return formatted.slice(0, split + 1) + suffix;
+}
+
 export function formatValue(value: CalcValue): { raw: string; display: string } {
-  const raw = math.format(value, { precision: 14, lowerExp: -8, upperExp: 16 });
+  const raw = lowercaseUnitSuffix(math.format(value, { precision: 14, lowerExp: -8, upperExp: 16 }));
   const display = raw.replace(/^(-?\d+)(?=\.|\s|$)/, (digits) =>
     digits.replace(/\B(?=(\d{3})+(?!\d))/g, ","),
   );
@@ -386,8 +400,8 @@ export function calculateInput(expression: string) {
     });
     return {
       ok: true as const,
-      raw: math.format(value, { precision: 64, lowerExp: -8, upperExp: 16 }),
-      display,
+      raw: lowercaseUnitSuffix(math.format(value, { precision: 64, lowerExp: -8, upperExp: 16 })),
+      display: lowercaseUnitSuffix(display),
     };
   } catch (error) {
     return { ok: false as const, error: readableError(error) };

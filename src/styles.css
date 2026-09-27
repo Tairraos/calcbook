@@ -1167,6 +1167,9 @@ kbd {
   width: 650px;
   height: 565px;
   padding: 30px;
+  /* dialog 尺寸固定；内容超出时在面板内滚动。 */
+  display: flex;
+  flex-direction: column;
 }
 .settings-dialog {
   width: 580px;
@@ -1399,6 +1402,11 @@ fieldset.settings-section {
   color: var(--green);
   background: var(--sage);
   border-color: var(--sage-border);
+}
+.help-tabpanel {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 .help-tabpanel:focus-visible {
   outline: none;

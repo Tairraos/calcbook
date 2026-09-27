@@ -11,7 +11,7 @@ test("中文单位名直接参与计算", () => {
   assert.deepEqual(display("1英里 + 1公里"), ["2.609344 km"]);
   assert.deepEqual(display("10磅 to 千克"), ["4.5359237 kg"]);
   assert.deepEqual(display("2加仑 to 升"), ["7.570823568 l"]);
-  assert.deepEqual(display("1卡 to 焦"), ["4.184 J"]);
+  assert.deepEqual(display("1卡 to 焦"), ["4.184 j"]);
   assert.deepEqual(display("2斤 to 克"), ["1,000 g"]);
   assert.deepEqual(display("1亩 to 平方米"), ["666.66666666667 m2"]);
 });
@@ -23,7 +23,7 @@ test("公制英制混算并入公制；纯英制保持原样", () => {
   assert.deepEqual(display("60 mph + 1 km/h"), ["97.56064 km / hour"]);
   // 节与英里每小时按同一规则并入 km/hour，速度类呈现一致。
   assert.deepEqual(display("20节 + 1 km/h"), ["38.04 km / hour"]);
-  assert.deepEqual(display("32 degF + 1 celsius"), ["1 degC"]);
+  assert.deepEqual(display("32 degF + 1 celsius"), ["1 degc"]);
   // 变量携带的单位也参与混用判断。
   assert.deepEqual(display("距离 = 1 mile\n距离 + 1 km"), ["1 mile", "2.609344 km"]);
   // 只有英制时不换算；显式 to 仍以目标单位为准。
@@ -61,7 +61,7 @@ test("同量纲分量约分：全抵消退回纯数字，部分抵消合并", ()
 test("显式 to 的目标单位不被公制合并覆盖", () => {
   assert.deepEqual(display("5 km to mile"), ["3.1068559611867 mile"]);
   assert.deepEqual(display("1 kg to lb"), ["2.2046226218488 lb"]);
-  assert.deepEqual(display("100 celsius to fahrenheit"), ["212 degF"]);
+  assert.deepEqual(display("100 celsius to fahrenheit"), ["212 degf"]);
   assert.deepEqual(display("1 mile + 1 km to m"), ["2,609.344 m"]);
   assert.deepEqual(display("10磅 to 千克"), ["4.5359237 kg"]);
 });
@@ -99,4 +99,15 @@ test("单位模式配置校验", () => {
   assert.equal(parseUnitMode("english"), "english");
   assert.throws(() => parseUnitMode("traditional"));
   assert.throws(() => parseUnitMode(undefined));
+});
+
+test("单位缩写不区分大小写，结果显示小写", () => {
+  assert.deepEqual(display("5 KM + 500 M"), ["5.5 km"]);
+  assert.deepEqual(display("1500MG"), ["1,500 mg"]);
+  assert.deepEqual(display("2 ML"), ["2 l"]);
+  assert.deepEqual(display("10 LBS to KG"), ["4.5359237 kg"]);
+  assert.deepEqual(display("1 hp to W"), ["745.6998715386 w"]);
+  assert.deepEqual(display("1担 to 公斤"), ["50 kg"]);
+  // 单字母大写也映射到常见单位；变量名大小写不受影响
+  assert.deepEqual(display("Price = 5\nTotal = Price × 3"), ["5", "15"]);
 });

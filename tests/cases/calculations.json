@@ -133,7 +133,7 @@
   {
     "name": "Chinese imperial and metric unit names",
     "source": "1英里 + 1公里\n10磅 to 千克\n1500毫克\n2加仑 to 升\n1卡 to 焦\n2斤 to 克",
-    "expected": ["2.609344 km", "4.5359237 kg", "1500 mg", "7.570823568 l", "4.184 J", "1000 g"]
+    "expected": ["2.609344 km", "4.5359237 kg", "1500 mg", "7.570823568 l", "4.184 j", "1000 g"]
   },
   {
     "name": "mixed block summary merges to metric",
@@ -148,7 +148,7 @@
   {
     "name": "explicit conversion target is respected",
     "source": "5 km to mile\n1 kg to lb\n100 celsius to fahrenheit\n1 mile + 1 km to m",
-    "expected": ["3.1068559611867 mile", "2.2046226218488 lb", "212 degF", "2609.344 m"]
+    "expected": ["3.1068559611867 mile", "2.2046226218488 lb", "212 degf", "2609.344 m"]
   },
   {
     "name": "unit conversion",
@@ -163,7 +163,7 @@
   {
     "name": "same-currency amounts",
     "source": "¥30 + 12 CNY\n$10 + 5 USD",
-    "expected": ["42 CNY", "15 USD"]
+    "expected": ["42 cny", "15 usd"]
   },
   {
     "name": "never invent exchange rates",

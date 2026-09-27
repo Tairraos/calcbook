@@ -22,7 +22,7 @@ type Entry = {
 };
 
 // [en, zh, 其他写法, 是否英制]。时间/角度/数据/货币不参与公制英制合并，只参与中英改写。
-const UNITS: Entry[] = [
+export const UNITS: Entry[] = [
   // 长度
   { en: "nm", zh: "纳米", aliases: ["nanometer", "nanometers"] },
   { en: "um", zh: "微米", aliases: ["micrometer", "micrometers"] },
@@ -59,7 +59,7 @@ const UNITS: Entry[] = [
   { en: "ml", zh: "毫升", aliases: ["milliliter", "milliliters"] },
   { en: "cl", zh: "厘升" },
   { en: "dl", zh: "分升" },
-  { en: "l", zh: "升", aliases: ["L", "liter", "liters", "litre", "litres", "公升"] },
+  { en: "l", zh: "升", aliases: ["L", "ml", "liter", "liters", "litre", "litres", "公升"] },
   { en: "m3", zh: "立方米", aliases: ["cubicmeter", "cubicmeters"] },
   { en: "shi", zh: "石", aliases: ["市石"] },
   { en: "cm3", zh: "立方厘米", aliases: ["cc", "cubiccentimeter", "cubiccentimeters"] },
@@ -83,6 +83,8 @@ const UNITS: Entry[] = [
   { en: "kg", zh: "千克", aliases: ["kilogram", "kilograms", "公斤"] },
   { en: "t", zh: "吨", aliases: ["tonne", "tonnes", "公吨"] },
   { en: "jin", zh: "斤" },
+  { en: "dan", zh: "担", aliases: ["市担"] },
+  { en: "dan", zh: "担", aliases: ["市担"] },
   { en: "liang", zh: "两" },
   { en: "qian", zh: "钱", aliases: ["市钱"] },
   { en: "lb", zh: "磅", aliases: ["pound", "pounds", "lbs", "lbm"], imperial: true },
@@ -147,7 +149,7 @@ const UNITS: Entry[] = [
   { en: "A", zh: "安", aliases: ["ampere", "amperes", "amp", "amps", "安培"] },
   { en: "ohm", zh: "欧姆", aliases: ["ohms"] },
   { en: "mol", zh: "摩尔", aliases: ["moles"] },
-  { en: "bit", zh: "比特", aliases: ["bits", "b"] },
+  { en: "bit", zh: "比特", aliases: ["bits"] },
   { en: "B", zh: "字节", aliases: ["byte", "bytes"] },
   { en: "kB", zh: "千字节" },
   { en: "MB", zh: "兆字节" },
@@ -160,11 +162,18 @@ const UNITS: Entry[] = [
 ];
 
 // mathjs 拒绝非字母开头的单位名，中文一律经由别名表在解析前替换成英文单位。
+let customUnitsRegistered = false;
+
 export function registerCustomUnits(math: {
   createUnit: (name: string, options: Record<string, unknown>) => unknown;
+  Unit: { UNITS: Record<string, unknown> };
 }): void {
+  // 模块在测试里可能被重复初始化；mathjs 的 createUnit 不允许重名。
+  if (customUnitsRegistered || math.Unit.UNITS.dan) return;
+  customUnitsRegistered = true;
   math.createUnit("nmi", { definition: "1852 m" });
   math.createUnit("mu", { definition: "666.6666666666667 m2" });
+  math.createUnit("dan", { definition: "50 kg" });
   math.createUnit("jin", { definition: "500 g" });
   math.createUnit("liang", { definition: "50 g" });
   math.createUnit("qian", { definition: "5 g" });
@@ -182,22 +191,66 @@ export const parseUnitAliases: Record<string, string> = {};
 const enToZh: Record<string, string> = {};
 // 中文写法 → 英文规范写法（解析与英文模式改写用）。
 const zhToEn: Record<string, string> = {};
-for (const entry of UNITS) {
-  parseUnitAliases[entry.zh] = entry.en;
-  zhToEn[entry.zh] = entry.en;
-  enToZh[entry.en] = entry.zh;
-  for (const alias of entry.aliases ?? []) {
-    parseUnitAliases[alias] = entry.en;
-    if (isChinese(alias)) zhToEn[alias] = entry.en;
-    else if (!alias.includes("/")) enToZh[alias] = entry.zh;
-  }
-}
-
 // 中文写法 → 中文规范名（自由模式混用时统一写法，如 千米 → 公里）。
 const zhToCanonical: Record<string, string> = {};
 for (const entry of UNITS) {
-  zhToCanonical[entry.zh] = entry.zh;
-  for (const alias of entry.aliases ?? []) if (isChinese(alias)) zhToCanonical[alias] = entry.zh;
+  // 首见优先：同一别名重复登记时不覆盖先前的映射（如 l 的别名 ml 不得顶掉毫升）。
+  if (!(entry.zh in parseUnitAliases)) parseUnitAliases[entry.zh] = entry.en;
+  if (!(entry.zh in zhToEn)) zhToEn[entry.zh] = entry.en;
+  if (!(entry.en in enToZh)) enToZh[entry.en] = entry.zh;
+  for (const alias of entry.aliases ?? []) {
+    if (alias in parseUnitAliases) continue;
+    parseUnitAliases[alias] = entry.en;
+    if (isChinese(alias)) {
+      if (!(alias in zhToEn)) zhToEn[alias] = entry.en;
+      zhToCanonical[alias] = entry.zh;
+    } else if (!alias.includes("/")) {
+      if (!(alias in enToZh)) enToZh[alias] = entry.zh;
+    }
+  }
+}
+
+
+// 大小写兼容：输入 `5 KM` `1500MG` `2 ML` 与小写等价，输出统一小写缩写。
+// 表：小写形式 → 规范写法（输出用小写，重解析经此表还原）。
+// mathjs 的大小写有语义（M=兆、m=毫），这里按笔记场景定优先级：
+// b/B→字节（比特写 bit）、s/S→秒（西门子写 siemens）、t/T→吨（特斯拉写 tesla）。
+export const caseUnitAliases: Record<string, string> = (() => {
+  const tokens = new Set<string>();
+  for (const entry of UNITS) {
+    if (!entry.en.includes("/")) tokens.add(entry.en);
+    for (const alias of entry.aliases ?? []) {
+      if (!isChinese(alias) && !alias.includes("/")) tokens.add(alias);
+    }
+  }
+  const prefixes = ["k", "M", "G", "T", "d", "c", "m", "u", "n", "h"];
+  const bases = ["m", "g", "l", "m2", "m3", "s", "J", "W", "N", "Pa", "Hz", "V", "A", "cal", "Wh"];
+  for (const base of bases) {
+    tokens.add(base);
+    for (const prefix of prefixes) tokens.add(prefix + base);
+  }
+  const overrides: Record<string, string> = {
+    b: "B", s: "s", t: "t", m: "m", a: "A", n: "N", w: "W", v: "V",
+    j: "J", k: "K", d: "d", h: "h", g: "g", l: "l",
+  };
+  const map: Record<string, string> = {};
+  // 小写原形（mg、km2）先占位；生成组合（Mg、Mm2）的小写已被占位时跳过。
+  for (const token of tokens) {
+    if (token.toLowerCase() === token) map[token] = token;
+  }
+  for (const token of tokens) {
+    const lower = token.toLowerCase();
+    if (lower === token || map[lower]) continue;
+    map[lower] = overrides[lower] ?? token;
+  }
+  // 单字母按笔记场景定优先级（覆盖 identity）。
+  for (const [lower, canonical] of Object.entries(overrides)) map[lower] = canonical;
+  return map;
+})();
+
+// 输出侧判定：小写形式能否作为单位重新解析（用于把结果统一成小写缩写）。
+export function isKnownUnitLower(lower: string): boolean {
+  return caseUnitAliases[lower] !== undefined || parseUnitAliases[lower] !== undefined;
 }
 
 const zhTokens = new Set(Object.keys(zhToEn));

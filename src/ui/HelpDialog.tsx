@@ -1,5 +1,6 @@
 import { ArrowUpRight, X } from "lucide-react";
 import { useState } from "react";
+import { UNITS } from "../domain/units.ts";
 import { Dialog } from "./Dialog.tsx";
 import { IconButton } from "./IconButton.tsx";
 
@@ -52,6 +53,38 @@ const aggregateGroups: ReferenceGroup[] = [
       ["说明: 算式", "冒号前是文字标签，不参与计算", "合计: 36 + 6 → 42"],
       ["变量名规则", "支持中英文、数字和下划线，不能以数字开头", "sum=9 → 报错"],
       ["保留字", "有含义的词是保留字，不能做变量名", "sum=9 → 报错"],
+    ],
+  },
+];
+
+// 保留字全表：单位（中英对照，来自单位登记表）+ 函数/常量/汇总/关键字。
+const unitReservedRows: ReferenceGroup["rows"] = [];
+for (let index = 0; index < UNITS.length; index += 4) {
+  const chunk = UNITS.slice(index, index + 4);
+  unitReservedRows.push([
+    chunk.map((entry) => `${entry.zh} → ${entry.en}`).join("；"),
+    "单位",
+    "不可用作变量名",
+  ]);
+}
+const reservedGroups: ReferenceGroup[] = [
+  {
+    title: "保留字 · 单位（中英对照，全部不可用作变量名）",
+    rows: unitReservedRows,
+  },
+  {
+    title: "保留字 · 函数、常量、汇总与关键字",
+    rows: [
+      ["sqrt / abs / round / ceil / floor", "函数", "sqrt(144) → 12"],
+      ["pi / e", "常量", "pi × 2 → 6.283"],
+      ["sum / total / 合计", "汇总", "sum"],
+      ["avg / average / 平均", "汇总（平均）", "avg"],
+      ["prev", "上一行结果", "prev + 4"],
+      ["to / in / into / as", "单位转换词", "5 km to m"],
+      ["of / on / off", "百分比短语", "20% of 150 → 30"],
+      ["plus / minus / times / divided by", "英文运算词", "8 times 9 → 72"],
+      ["CNY / USD / EUR / GBP；元 / 美元 / 欧元 / 英镑", "货币", "¥30 + 12 CNY → 42 CNY"],
+      ["大小写规则", "单位缩写不区分大小写，结果显示为小写", "5 KM + 500 M → 2.5 km"],
     ],
   },
 ];
@@ -298,7 +331,7 @@ export function HelpDialog({
         [
           ["functions", functionGroups],
           ["aggregates", aggregateGroups],
-          ["keywords", keywordGroups],
+          ["keywords", [...reservedGroups, ...keywordGroups]],
           ["units", unitGroups],
         ] as const
       ).map(([id, groups]) => (
