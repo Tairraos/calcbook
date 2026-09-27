@@ -11,10 +11,11 @@ import { initialKeypad, type KeypadState, pressKeypad } from "./domain/keypad.ts
 import {
   CALCULATOR_HIDE_AFTER_MS,
   CALCULATOR_INSERT_EVENT,
+  CALCULATOR_READY_EVENT,
   CALCULATOR_THEME_EVENT,
+  enableTitleDragRegions,
   hideCalculatorWindow,
   isDesktopApp,
-  NARROW_SIZE,
   readStoredTheme,
   WIDE_SIZE,
 } from "./platform/storage.ts";
@@ -75,16 +76,27 @@ export function CalculatorWindow() {
           ? "…"
           : "0";
 
-  // 主题跟随主窗口：启动读工作区，主窗切换配色时经事件同步。
+  // 主题跟随主窗口：启动读工作区，挂载完成后向主窗要一次当前配色（防创建期竞态），
+  // 之后主窗切换配色时经事件同步。
   useEffect(() => {
     document.documentElement.dataset.theme = readStoredTheme();
     if (!isDesktopApp) return;
+    void emit(CALCULATOR_READY_EVENT).catch(() => {});
     const unlisten = listen<string>(CALCULATOR_THEME_EVENT, (event) => {
       document.documentElement.dataset.theme = event.payload === "midnight" ? "midnight" : "paper";
     });
     return () => {
       void unlisten.then((dispose) => dispose());
     };
+  }, []);
+
+  // 标题栏为 Overlay：顶部留出红绿灯区域并作为拖拽区（按钮不受影响）。
+  useEffect(() => {
+    let dispose: (() => void) | undefined;
+    void enableTitleDragRegions().then((handler) => {
+      dispose = handler;
+    });
+    return () => dispose?.();
   }, []);
 
   // 失焦 5 分钟未被再次激活就自动收起；最小化也算失焦。
@@ -107,7 +119,7 @@ export function CalculatorWindow() {
     setHistoryOpen((open) => {
       const next = !open;
       if (isDesktopApp) {
-        const size = next ? WIDE_SIZE : NARROW_SIZE;
+        const size = next ? WIDE_SIZE : { width: 300, height: 540 };
         void getCurrentWindow()
           .setSize(new LogicalSize(size.width, size.height))
           .catch(() => {});
@@ -147,6 +159,7 @@ export function CalculatorWindow() {
 
   return (
     <div className="calculator-window">
+      <div className="calc-drag-strip" data-tauri-drag-region aria-hidden="true" />
       <IconButton
         className="calc-history-toggle"
         title={historyOpen ? "隐藏最近计算" : "显示最近计算"}

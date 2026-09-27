@@ -32,6 +32,7 @@ import {
 import { rewriteLineUnits, type UnitMode } from "./domain/units.ts";
 import {
   CALCULATOR_INSERT_EVENT,
+  CALCULATOR_READY_EVENT,
   CALCULATOR_THEME_EVENT,
   CALCULATOR_VISIBILITY_EVENT,
   calculatorStatus,
@@ -305,13 +306,18 @@ export default function App() {
     void calculatorStatus()
       .then((status) => setCalculatorVisible(status.visible))
       .catch(() => {});
+    const pushTheme = () => {
+      void emit(CALCULATOR_THEME_EVENT, themeRef.current).catch(() => {});
+    };
     const unlisten = listen<boolean>(CALCULATOR_VISIBILITY_EVENT, (event) => {
       setCalculatorVisible(event.payload === true);
-      if (event.payload === true)
-        void emit(CALCULATOR_THEME_EVENT, themeRef.current).catch(() => {});
+      if (event.payload === true) pushTheme();
     });
+    // 子窗挂载完成时立即补一次主题，避免创建早期的推送丢失（竞态）。
+    const unlistenReady = listen(CALCULATOR_READY_EVENT, pushTheme);
     return () => {
       void unlisten.then((dispose) => dispose());
+      void unlistenReady.then((dispose) => dispose());
     };
   }, []);
 

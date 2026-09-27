@@ -22,6 +22,9 @@ fn ensure_calculator<R: Runtime>(app: &AppHandle<R>) -> Result<WebviewWindow<R>,
     )
     .title("计算器 · calcbook")
     .inner_size(NARROW_WIDTH, WINDOW_HEIGHT)
+    // 与主窗一致：保留红绿灯、隐藏标题文字，内容延伸到标题栏下方。
+    .title_bar_style(tauri::TitleBarStyle::Overlay)
+    .hidden_title(true)
     .minimizable(true)
     // 不允许最大化：macOS 上同时禁掉绿点的 zoom 与双击标题栏放大。
     .maximizable(false)
