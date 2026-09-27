@@ -297,6 +297,9 @@ export default function App() {
   );
 
   // 计算器子窗口状态：初始查询一次，之后由 Rust 在显示/隐藏时推送。
+  // 桌面版主题存在文件系统而非 localStorage，子窗打开时需立即同步当前配色。
+  const themeRef = useRef(workspace?.theme ?? "paper");
+  themeRef.current = workspace?.theme ?? "paper";
   useEffect(() => {
     if (!isDesktopApp) return;
     void calculatorStatus()
@@ -304,6 +307,8 @@ export default function App() {
       .catch(() => {});
     const unlisten = listen<boolean>(CALCULATOR_VISIBILITY_EVENT, (event) => {
       setCalculatorVisible(event.payload === true);
+      if (event.payload === true)
+        void emit(CALCULATOR_THEME_EVENT, themeRef.current).catch(() => {});
     });
     return () => {
       void unlisten.then((dispose) => dispose());

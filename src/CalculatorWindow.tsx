@@ -4,7 +4,7 @@
 
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { CornerDownLeft, Delete, History, Keyboard, RotateCcw } from "lucide-react";
+import { BookOpen, Delete, History, PenLine, RotateCcw } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { calculateInput } from "./domain/calculation.ts";
 import { initialKeypad, type KeypadState, pressKeypad } from "./domain/keypad.ts";
@@ -62,7 +62,6 @@ const keyLabels: Record<string, string> = {
 export function CalculatorWindow() {
   const [state, setState] = useState<KeypadState>(initialKeypad);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const [written, setWritten] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const answerRef = useRef<HTMLOutputElement>(null);
   const answerTextRef = useRef<HTMLSpanElement>(null);
@@ -75,7 +74,6 @@ export function CalculatorWindow() {
         : state.expression
           ? "…"
           : "0";
-  const canInsert = Boolean(outcome?.ok) && isDesktopApp;
 
   // 主题跟随主窗口：启动读工作区，主窗切换配色时经事件同步。
   useEffect(() => {
@@ -121,8 +119,6 @@ export function CalculatorWindow() {
   async function insert(expression: string) {
     try {
       await emit(CALCULATOR_INSERT_EVENT, expression);
-      setWritten(true);
-      window.setTimeout(() => setWritten(false), 1400);
     } catch {
       // 非 Tauri 环境按钮已禁用；发送失败不惊扰用户。
     }
@@ -151,23 +147,20 @@ export function CalculatorWindow() {
 
   return (
     <div className="calculator-window">
-      <div className="calc-toolbar" data-tauri-drag-region>
-        <span className="calc-toolbar-spacer" aria-hidden="true" />
-        <span className="calc-toolbar-title">计算器</span>
-        <IconButton
-          title={historyOpen ? "隐藏最近计算" : "显示最近计算"}
-          aria-pressed={historyOpen}
-          onClick={toggleHistory}
-        >
-          <History size={15} />
-        </IconButton>
-      </div>
+      <IconButton
+        className="calc-history-toggle"
+        title={historyOpen ? "隐藏最近计算" : "显示最近计算"}
+        aria-pressed={historyOpen}
+        onClick={toggleHistory}
+      >
+        <BookOpen size={13} />
+        历史
+      </IconButton>
       <div className={`calculator-inner ${historyOpen ? "has-history" : ""}`}>
         <div className="calc-main">
           <div className="calc-screen">
             <div className="calc-screen-caption">
               <span>随手算一算</span>
-              <Keyboard size={14} />
             </div>
             <input
               ref={inputRef}
@@ -229,15 +222,6 @@ export function CalculatorWindow() {
               </button>
             ))}
           </div>
-          <button
-            className="insert-result"
-            type="button"
-            disabled={!canInsert}
-            onClick={() => void insert(state.expression)}
-          >
-            <CornerDownLeft size={15} />
-            {written ? "已写入笔记" : "写入当前笔记"}
-          </button>
         </div>
         {historyOpen && (
           <aside className="calc-history-sidebar" aria-label="最近计算">
@@ -263,22 +247,33 @@ export function CalculatorWindow() {
             ) : (
               <div className="calc-history">
                 {state.history.map((item) => (
-                  <button
-                    type="button"
-                    key={item.expression}
-                    onClick={() =>
-                      setState((before) => ({
-                        ...before,
-                        expression: item.result,
-                        result: null,
-                        error: null,
-                      }))
-                    }
-                    title="使用这个结果继续计算"
-                  >
-                    <span>{item.expression}</span>
-                    <strong>= {item.display}</strong>
-                  </button>
+                  <div className="calc-history-row" key={item.expression}>
+                    <button
+                      type="button"
+                      className="history-use"
+                      onClick={() =>
+                        setState((before) => ({
+                          ...before,
+                          expression: item.result,
+                          result: null,
+                          error: null,
+                        }))
+                      }
+                      title="使用这个结果继续计算"
+                    >
+                      <span>{item.expression}</span>
+                      <strong>= {item.display}</strong>
+                    </button>
+                    <button
+                      type="button"
+                      className="history-insert"
+                      disabled={!isDesktopApp}
+                      title="把这条算式插入笔记"
+                      onClick={() => void insert(item.expression)}
+                    >
+                      <PenLine size={13} />
+                    </button>
+                  </div>
                 ))}
               </div>
             )}

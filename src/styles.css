@@ -823,31 +823,32 @@ kbd {
 .error-count {
   color: var(--error);
 }
-/* 计算器独立窗口：工具行留出 macOS 红绿灯位置，主体 + 可选的最近计算侧栏。 */
+/* 计算器独立窗口：右上角「历史」按钮，主体 + 可选的最近计算侧栏。 */
 .calculator-window {
   height: 100dvh;
   display: flex;
   flex-direction: column;
   background: var(--calculator);
   overflow: hidden;
+  position: relative;
 }
-.calc-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  height: 46px;
-  padding: 0 10px 0 0;
-  flex-shrink: 0;
+.calc-history-toggle {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  z-index: 2;
+  gap: 4px;
+  padding: 4px 9px;
+  height: 26px;
+  width: auto;
+  border: 1px solid var(--border);
+  background: var(--sidebar);
+  font-size: 12px;
 }
-.calc-toolbar-spacer {
-  width: 74px;
-  flex-shrink: 0;
-}
-.calc-toolbar-title {
-  flex: 1;
-  text-align: center;
-  font-size: 13px;
-  font-weight: 600;
+.calc-history-toggle[aria-pressed="true"] {
+  background: var(--sage);
+  color: var(--green);
+  border-color: var(--sage-border);
 }
 .calculator-inner {
   display: flex;
@@ -859,17 +860,21 @@ kbd {
   /* 固定 300px：展开最近计算时窗口加宽，计算器主体面积不变。 */
   width: 300px;
   flex: none;
-  padding: 4px 16px 18px;
-  overflow-y: auto;
+  padding: 34px 16px 18px;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 .calc-history-sidebar {
-  width: 160px;
+  width: 200px;
   flex: none;
   border-left: 1px solid var(--border);
-  padding: 4px 10px 12px;
+  padding: 34px 12px 12px;
   overflow-y: auto;
+  scrollbar-width: none;
+}
+.calc-history-sidebar::-webkit-scrollbar {
+  display: none;
 }
 .calc-history-sidebar .calc-history {
   max-height: none;
@@ -987,22 +992,6 @@ kbd {
   background: var(--green-hover);
   border-color: var(--green-hover);
 }
-.insert-result {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 7px;
-  width: 100%;
-  font-size: 12px;
-  color: var(--green);
-  border: 1px solid var(--sage-border);
-  border-radius: 6px;
-  height: 34px;
-  margin: 13px 0 23px;
-}
-.insert-result:hover:enabled {
-  background: var(--sage);
-}
 .calc-history-heading {
   border-top: 1px solid var(--border);
   padding-top: 16px;
@@ -1037,8 +1026,35 @@ kbd {
 .calc-history {
   padding-top: 5px;
 }
+.calc-history-row {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+.calc-history-row .history-use {
+  flex: 1;
+  min-width: 0;
+}
+.history-insert {
+  opacity: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  color: var(--muted);
+}
+.history-insert:hover:enabled {
+  color: var(--green);
+  background: var(--hover);
+}
+.calc-history-row:hover .history-insert,
+.calc-history-row:focus-within .history-insert {
+  opacity: 1;
+}
 .calc-history button {
-  width: 100%;
+  width: auto;
   padding: 9px 4px;
   display: flex;
   justify-content: space-between;

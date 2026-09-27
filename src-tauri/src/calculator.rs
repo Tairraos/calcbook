@@ -4,6 +4,8 @@ use tauri::{
 };
 
 pub const CALCULATOR_LABEL: &str = "calculator";
+pub const NARROW_WIDTH: f64 = 300.0;
+pub const WINDOW_HEIGHT: f64 = 540.0;
 pub const VISIBILITY_EVENT: &str = "calculator://visible";
 
 /// 计算器窗口状态：窗口按需创建，「关闭」实际是隐藏，webview 常驻以保留算式与历史。
@@ -19,19 +21,25 @@ fn ensure_calculator<R: Runtime>(app: &AppHandle<R>) -> Result<WebviewWindow<R>,
         WebviewUrl::App("index.html?view=calculator".into()),
     )
     .title("计算器 · calcbook")
-    .inner_size(300.0, 540.0)
+    .inner_size(NARROW_WIDTH, WINDOW_HEIGHT)
     .minimizable(true)
     // 不允许最大化：macOS 上同时禁掉绿点的 zoom 与双击标题栏放大。
     .maximizable(false)
-    // 宽高固定：窄态 300×540，展开最近计算后由前端切到 460×540，用户不能手动 resize。
+    // 宽高固定：窄态 300×540，展开最近计算后由前端切到 500×540，用户不能手动 resize。
     .resizable(false);
-    // 首次出现在主窗右侧；主窗不存在（测试或异常）时用系统默认位置。
+    // 默认出现在主窗口正中间；主窗不存在（测试或异常）时用系统默认位置。
     if let Some(main) = app.get_webview_window("main") {
-        if let (Ok(position), Ok(size)) = (main.outer_position(), main.outer_size()) {
-            builder = builder.position(
-                (position.x + size.width as i32 + 12) as f64,
-                position.y.max(0) as f64,
-            );
+        if let (Ok(position), Ok(size), Ok(scale)) = (
+            main.outer_position(),
+            main.outer_size(),
+            main.scale_factor(),
+        ) {
+            // 窗口尺寸是逻辑单位，先按主窗缩放比换算成物理像素再求中心。
+            let width = (NARROW_WIDTH * scale) as i32;
+            let height = (WINDOW_HEIGHT * scale) as i32;
+            let x = position.x + (size.width as i32 - width) / 2;
+            let y = (position.y + (size.height as i32 - height) / 2).max(0);
+            builder = builder.position(x as f64 / scale, y as f64 / scale);
         }
     }
     builder
