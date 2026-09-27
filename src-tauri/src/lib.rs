@@ -52,7 +52,7 @@ fn store(app: &tauri::AppHandle) -> Result<storage::Store, String> {
 fn load_workspace(
     app: tauri::AppHandle,
     lock: tauri::State<StoreLock>,
-) -> Result<Option<storage::Workspace>, String> {
+) -> Result<Option<storage::Payload>, String> {
     let _guard = lock.0.lock().map_err(|_| "笔记存储忙，请重启应用")?;
     store(&app)?.load()
 }
@@ -61,7 +61,7 @@ fn load_workspace(
 fn save_workspace(
     app: tauri::AppHandle,
     lock: tauri::State<StoreLock>,
-    workspace: storage::Workspace,
+    workspace: storage::Payload,
 ) -> Result<(), String> {
     let _guard = lock.0.lock().map_err(|_| "笔记存储忙，请重启应用")?;
     storage::save(&store(&app)?.directory()?, &workspace)
@@ -120,6 +120,49 @@ fn open_project(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|error| format!("无法打开项目链接：{error}"))
 }
 
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ImportedNote {
+    title: String,
+    content: String,
+}
+
+/// 打开一个 Numi 兼容的 .txt 笔记并返回原始文本；`= 结果` 由前端剥离后重新计算。
+#[tauri::command]
+async fn import_note(app: tauri::AppHandle) -> Result<Option<ImportedNote>, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let Some(choice) = app
+            .dialog()
+            .file()
+            .add_filter("文本笔记", &["txt"])
+            .set_title("导入 Numi 文本笔记")
+            .blocking_pick_file()
+        else {
+            return Ok(None);
+        };
+        let path = choice.into_path().map_err(|error| error.to_string())?;
+        let metadata =
+            std::fs::metadata(&path).map_err(|error| format!("无法读取所选文件：{error}"))?;
+        if metadata.len() > 24_000_000 {
+            return Err("所选文件超过 24 MB".into());
+        }
+        let bytes = std::fs::read(&path).map_err(|error| format!("无法读取所选文件：{error}"))?;
+        let content =
+            String::from_utf8(bytes).map_err(|_| "所选文件不是 UTF-8 文本".to_string())?;
+        if content.encode_utf16().count() > 100_000 {
+            return Err("笔记超过 100,000 字上限".into());
+        }
+        let title = path
+            .file_stem()
+            .map(|stem| stem.to_string_lossy().trim().to_string())
+            .filter(|stem| !stem.is_empty())
+            .unwrap_or_else(|| "导入的笔记".into());
+        Ok(Some(ImportedNote { title, content }))
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -130,6 +173,7 @@ pub fn run() {
             load_workspace,
             save_workspace,
             export_note,
+            import_note,
             storage_info,
             choose_storage_directory,
             open_project

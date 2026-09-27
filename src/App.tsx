@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { evaluateNotebook } from "./domain/calculation.ts";
+import { parseNoteBody } from "./domain/format.ts";
 import { initialKeypad } from "./domain/keypad.ts";
 import {
   createNote,
@@ -28,10 +29,12 @@ import {
   MAX_TITLE_LENGTH,
   type Note,
 } from "./domain/notebook.ts";
+import { rewriteLineUnits, type UnitMode } from "./domain/units.ts";
 import {
   downloadText,
   enableTitleDragRegions,
   hasNativeTitlebar,
+  importNoteFile,
   isDesktopApp,
   openProject,
   resizeWindowBy,
@@ -63,6 +66,7 @@ export default function App() {
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const activeLineRef = useRef(0);
 
   const notes = workspace?.notes ?? [];
   const visibleNotes = notes.filter(
@@ -82,6 +86,12 @@ export default function App() {
     document.documentElement.classList.toggle("native-titlebar", hasNativeTitlebar);
     document.title = `${selected?.title || "calcbook"} · calcbook`;
   }, [workspace?.theme, selected?.title]);
+
+  // 活动行回到第一行：换笔记时重置 ref，避免失焦改写拿旧行号碰新笔记。
+  const resetActiveLine = useCallback(() => {
+    activeLineRef.current = 0;
+    setActiveLine(0);
+  }, []);
 
   useEffect(() => {
     let disposed = false;
@@ -112,12 +122,12 @@ export default function App() {
       update((before) => ({ ...before, notes: [note, ...before.notes], activeId: note.id }));
       setTrashView(false);
       setQuery("");
-      setActiveLine(0);
+      resetActiveLine();
       if (window.innerWidth <= 760) setSidebarOpen(false);
       requestAnimationFrame(() => editorRef.current?.focus());
       return true;
     },
-    [workspace?.notes.length, update],
+    [workspace?.notes.length, resetActiveLine, update],
   );
 
   function patchNote(patch: Partial<Pick<Note, "body" | "title" | "trashed">>) {
@@ -140,6 +150,7 @@ export default function App() {
       ),
     }));
     setTrashView(false);
+    resetActiveLine();
     setNotice("笔记已恢复");
   }
 
@@ -188,6 +199,101 @@ export default function App() {
       setNotice("导出失败，请重试。");
     }
   }
+
+  // 桌面版走原生对话框导入 Numi 的 .txt；浏览器预览退回隐藏的 file input。
+  async function importNote() {
+    if (!isDesktopApp) {
+      fileRef.current?.click();
+      return;
+    }
+    try {
+      const imported = await importNoteFile();
+      if (!imported) return;
+      if (newNote(imported.title.slice(0, MAX_TITLE_LENGTH), imported.body))
+        setNotice("笔记已导入");
+    } catch {
+      setNotice("导入失败，请重试。");
+    }
+  }
+
+  // 光标离开刚算完的一行时，按单位模式改写该行写法；只处理这一行，不重排整篇。
+  const rewriteLeftLine = useCallback(
+    (line: number) => {
+      if (!selected || !workspace || line < 0) return;
+      if (results[line]?.kind !== "result") return;
+      const lines = selected.body.split("\n");
+      const rewritten = rewriteLineUnits(lines[line] ?? "", workspace.unitMode);
+      if (rewritten === null || rewritten === lines[line]) return;
+      const textarea = editorRef.current;
+      const caretLine = activeLineRef.current;
+      const selection =
+        textarea && textarea.selectionStart === textarea.selectionEnd
+          ? ([textarea.selectionStart, textarea.selectionEnd] as const)
+          : null;
+      const delta = rewritten.length - (lines[line]?.length ?? 0);
+      // 编辑器仍持有焦点时用 execCommand 走原生编辑路径，保住浏览器撤销栈；
+      // 失焦（点击计算器、设置等）时 execCommand 不可用，退回整值替换。
+      if (textarea && selection && document.activeElement === textarea) {
+        const start = lines.slice(0, line).reduce((sum, item) => sum + item.length + 1, 0);
+        try {
+          textarea.setSelectionRange(start, start + lines[line].length);
+          if (document.execCommand("insertText", false, rewritten)) {
+            textarea.setSelectionRange(
+              selection[0] + (line < caretLine ? delta : 0),
+              selection[1] + (line < caretLine ? delta : 0),
+            );
+            return;
+          }
+          textarea.setSelectionRange(selection[0], selection[1]);
+        } catch {
+          textarea.setSelectionRange(selection[0], selection[1]);
+        }
+      }
+      update((before) => ({
+        ...before,
+        notes: before.notes.map((note) =>
+          note.id === selected.id
+            ? {
+                ...note,
+                body: lines.map((item, index) => (index === line ? rewritten : item)).join("\n"),
+                updatedAt: new Date().toISOString(),
+              }
+            : note,
+        ),
+      }));
+      // 程序化改写会把光标推到结尾；把它放回原处（改写行在光标前时按长度差平移）。
+      if (textarea && selection) {
+        const shift = line < caretLine ? delta : 0;
+        requestAnimationFrame(() =>
+          textarea.setSelectionRange(selection[0] + shift, selection[1] + shift),
+        );
+      }
+    },
+    [selected, results, workspace, update],
+  );
+
+  const handleActiveLine = useCallback(
+    (line: number) => {
+      const previous = activeLineRef.current;
+      activeLineRef.current = line;
+      setActiveLine(line);
+      const textarea = editorRef.current;
+      if (line !== previous && textarea && textarea.selectionStart === textarea.selectionEnd)
+        rewriteLeftLine(previous);
+    },
+    [rewriteLeftLine],
+  );
+
+  const handleEditorBlur = useCallback(() => {
+    const textarea = editorRef.current;
+    if (textarea && textarea.selectionStart === textarea.selectionEnd)
+      rewriteLeftLine(activeLineRef.current);
+  }, [rewriteLeftLine]);
+
+  const changeUnitMode = useCallback(
+    (mode: UnitMode) => update((before) => ({ ...before, unitMode: mode })),
+    [update],
+  );
 
   // 打开计算器时窗口加宽一列，笔记区宽度不变；收起时还原。浏览器预览为 no-op。
   function showCalculator(open: boolean) {
@@ -299,7 +405,7 @@ export default function App() {
                 aria-current={selected?.id === note.id ? "page" : undefined}
                 onClick={() => {
                   update((before) => ({ ...before, activeId: note.id }));
-                  setActiveLine(0);
+                  resetActiveLine();
                   if (window.innerWidth <= 760) setSidebarOpen(false);
                 }}
               >
@@ -336,6 +442,7 @@ export default function App() {
               onClick={() => {
                 setTrashView(!trashView);
                 setQuery("");
+                resetActiveLine();
               }}
             >
               <Trash2 size={15} />
@@ -437,7 +544,7 @@ export default function App() {
                   THINK IT. NOTE IT. SOLVE IT.
                 </span>
                 <div className="note-tools">
-                  <IconButton title="导入文本笔记" onClick={() => fileRef.current?.click()}>
+                  <IconButton title="导入文本笔记" onClick={() => void importNote()}>
                     <ArrowUpFromLine size={16} />
                   </IconButton>
                   <IconButton title="导出当前笔记" onClick={() => void exportNote()}>
@@ -504,7 +611,8 @@ export default function App() {
               onChange={(body) => patchNote({ body })}
               onCopy={(text) => void copy(text)}
               activeLine={activeLine}
-              onActiveLine={setActiveLine}
+              onActiveLine={handleActiveLine}
+              onBlurEditor={handleEditorBlur}
               editorRef={editorRef}
               readOnly={selected.trashed}
             />
@@ -540,6 +648,8 @@ export default function App() {
           directory={storage.directory}
           defaultDirectory={storage.defaultDirectory}
           canChooseDirectory={storage.canChoose}
+          unitMode={workspace?.unitMode ?? "free"}
+          onChangeUnitMode={changeUnitMode}
           version={__APP_VERSION__}
           buildTime={__BUILD_TIME__}
           githubUrl={__GITHUB_URL__}
@@ -570,7 +680,7 @@ export default function App() {
             if (body.length > MAX_NOTE_LENGTH || body.includes("\0")) throw new Error("invalid");
             const imported = newNote(
               file.name.replace(/\.[^.]+$/, "").slice(0, MAX_TITLE_LENGTH),
-              body.replace(/\r\n?/g, "\n"),
+              parseNoteBody(body),
             );
             if (imported) setNotice("笔记已导入");
           } catch {

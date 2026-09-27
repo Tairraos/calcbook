@@ -1208,6 +1208,40 @@ fieldset.settings-section {
   line-height: 1.7;
   margin: 8px 0 0;
 }
+.unit-mode-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.unit-mode-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--sidebar);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.unit-mode-option:has(input:checked) {
+  border-color: var(--strong-border);
+  background: var(--hover);
+}
+.unit-mode-option input {
+  margin: 2px 0 0;
+  accent-color: var(--strong-border);
+}
+.unit-mode-option span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.unit-mode-option small {
+  color: var(--muted);
+}
 .setting-message {
   color: var(--green);
 }

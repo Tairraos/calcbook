@@ -91,6 +91,37 @@
   },
   { "name": "compatible unit addition", "source": "2 km + 500 m", "expected": ["2.5 km"] },
   {
+    "name": "metric and imperial merge to metric",
+    "source": "1 mile + 1 km\n1 lb + 1 kg\n1 gal + 1 l\n1 foot + 30 cm\n1 mile + 1 ft",
+    "expected": [
+      "2.609344 km",
+      "1.45359237 kg",
+      "4.785411784 l",
+      "0.6048 m",
+      "1.0001893939394 mile"
+    ]
+  },
+  {
+    "name": "Chinese imperial and metric unit names",
+    "source": "1英里 + 1公里\n10磅 to 千克\n1500毫克\n2加仑 to 升\n1卡 to 焦\n2斤 to 克",
+    "expected": ["2.609344 km", "4.5359237 kg", "1500 mg", "7.570823568 l", "4.184 J", "1000 g"]
+  },
+  {
+    "name": "mixed block summary merges to metric",
+    "source": "1 mile\n1 km\nsum",
+    "expected": ["1 mile", "1 km", "2.609344 km"]
+  },
+  {
+    "name": "same-dimension division cancels to plain numbers",
+    "source": "1 m / 1 cm\n2 kg / 500 g\n1 mile / 1 km\n钙 = 10.2克 / 100克\n钙",
+    "expected": ["100", "4", "1.609344", "0.102", "0.102"]
+  },
+  {
+    "name": "explicit conversion target is respected",
+    "source": "5 km to mile\n1 kg to lb\n100 celsius to fahrenheit\n1 mile + 1 km to m",
+    "expected": ["3.1068559611867 mile", "2.2046226218488 lb", "212 degF", "2609.344 m"]
+  },
+  {
     "name": "unit conversion",
     "source": "5 km to m\n90 min to hour\n1 kg to g",
     "expected": ["5000 m", "1.5 hour", "1000 g"]

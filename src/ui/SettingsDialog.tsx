@@ -1,12 +1,33 @@
 import { ExternalLink, FolderOpen, X } from "lucide-react";
 import { useState } from "react";
+import { UNIT_MODES, type UnitMode } from "../domain/units.ts";
 import { Dialog } from "./Dialog.tsx";
 import { IconButton } from "./IconButton.tsx";
+
+const UNIT_MODE_OPTIONS: { value: UnitMode; label: string; hint: string }[] = [
+  {
+    value: "free",
+    label: "自由单位",
+    hint: "整篇可用各种单位；同一行中英文混用时统一成中文，公制英制混算时结果并入公制。",
+  },
+  {
+    value: "chinese",
+    label: "中文单位",
+    hint: "光标离开刚算完的行时，把该行单位改写成中文，如 100L → 100升。",
+  },
+  {
+    value: "english",
+    label: "英文单位",
+    hint: "光标离开刚算完的行时，把该行单位改写成英文，如 100升 → 100 L。",
+  },
+];
 
 export function SettingsDialog({
   directory,
   defaultDirectory,
   canChooseDirectory,
+  unitMode,
+  onChangeUnitMode,
   version,
   buildTime,
   githubUrl,
@@ -19,6 +40,8 @@ export function SettingsDialog({
   directory: string;
   defaultDirectory: string;
   canChooseDirectory: boolean;
+  unitMode: UnitMode;
+  onChangeUnitMode: (mode: UnitMode) => void;
   version: string;
   buildTime: string;
   githubUrl: string;
@@ -92,6 +115,31 @@ export function SettingsDialog({
           </p>
         )}
       </section>
+
+      <fieldset className="settings-section" aria-labelledby="units-title">
+        <legend id="units-title">单位写法</legend>
+        <div className="unit-mode-group" role="radiogroup" aria-labelledby="units-title">
+          {UNIT_MODES.map((value) => {
+            const option = UNIT_MODE_OPTIONS.find((item) => item.value === value);
+            if (!option) return null;
+            return (
+              <label className="unit-mode-option" key={value}>
+                <input
+                  type="radio"
+                  name="unit-mode"
+                  value={value}
+                  checked={unitMode === value}
+                  onChange={() => onChangeUnitMode(value)}
+                />
+                <span>
+                  <strong>{option.label}</strong>
+                  <small>{option.hint}</small>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
 
       <section className="settings-section about-section" aria-labelledby="about-title">
         <div className="about-brand">

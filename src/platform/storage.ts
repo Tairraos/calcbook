@@ -1,4 +1,5 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { parseNoteBody, serializeNoteBody } from "../domain/format.ts";
 import { parseWorkspace, type Workspace } from "../domain/notebook.ts";
 
 export const STORAGE_KEY = "calcbook.workspace.v1";
@@ -39,17 +40,43 @@ export async function loadWorkspace(): Promise<Workspace | null> {
         const raw = localStorage.getItem(STORAGE_KEY);
         return raw === null ? null : JSON.parse(raw);
       })();
-  return data === null ? null : parseWorkspace(data);
+  if (data === null) return null;
+  const workspace = parseWorkspace(data);
+  // 桌面版正文来自 Numi 兼容的 .txt：导入时剥掉保存时自动追加的 “= 结果”，内存里只留源表达式。
+  return isTauri()
+    ? {
+        ...workspace,
+        notes: workspace.notes.map((note) => ({ ...note, body: parseNoteBody(note.body) })),
+      }
+    : workspace;
 }
 
 export async function saveWorkspace(workspace: Workspace): Promise<void> {
   const validated = parseWorkspace(workspace);
-  if (isTauri()) await invoke("save_workspace", { workspace: validated });
-  else {
-    const previous = localStorage.getItem(STORAGE_KEY);
-    if (previous !== null) parseWorkspace(JSON.parse(previous));
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(validated));
+  if (isTauri()) {
+    await invoke("save_workspace", {
+      workspace: {
+        ...validated,
+        // 保存时按 Numi 格式把计算结果写回行尾，文件可直接用 Numi 打开。
+        notes: validated.notes.map((note) => ({ ...note, body: serializeNoteBody(note.body) })),
+      },
+    });
+    return;
   }
+  const previous = localStorage.getItem(STORAGE_KEY);
+  if (previous !== null) parseWorkspace(JSON.parse(previous));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(validated));
+}
+
+export type ImportedNote = { title: string; body: string };
+
+// 桌面版用原生文件对话框选一个 Numi 兼容的 .txt；返回 null 表示用户取消。
+export async function importNoteFile(): Promise<ImportedNote | null> {
+  if (!isTauri()) throw new Error("请在桌面应用中使用导入功能。");
+  const imported = await invoke<{ title: string; content: string } | null>("import_note");
+  return imported === null
+    ? null
+    : { title: imported.title, body: parseNoteBody(imported.content) };
 }
 
 export async function guardNativeClose(

@@ -8,3 +8,4 @@ src-tauri/gen/
 !.env.example
 artifacts/
 .calcbook-data/
+.zcode/

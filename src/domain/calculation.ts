@@ -11,8 +11,18 @@ import {
   type SymbolNode,
   type Unit,
 } from "mathjs";
+import {
+  cancelSameDimension,
+  parseUnitAliases,
+  preferMetric,
+  registerCustomUnits,
+  type UnitSides,
+  unitKind,
+  valueSides,
+} from "./units.ts";
 
 const math = create(all, { number: "BigNumber", precision: 64, predictable: true });
+registerCustomUnits(math);
 const originalIsAlpha = math.parse.isAlpha;
 math.parse.isAlpha = (character, previous, next) =>
   /^\p{L}$/u.test(character) || originalIsAlpha(character, previous, next);
@@ -41,25 +51,7 @@ const operators = new Set([
 ]);
 const constants = new Set(["pi", "e"]);
 const summaries = new Set(["sum", "total", "合计", "avg", "average", "平均"]);
-const aliases: Record<string, string> = {
-  min: "minute",
-  minutes: "minute",
-  hrs: "hour",
-  hours: "hour",
-  公里: "km",
-  千米: "km",
-  米: "m",
-  厘米: "cm",
-  毫米: "mm",
-  千克: "kg",
-  克: "g",
-  分钟: "minute",
-  小时: "hour",
-  秒: "second",
-  元: "CNY",
-  RMB: "CNY",
-  人民币: "CNY",
-};
+const aliases: Record<string, string> = parseUnitAliases;
 const currencySymbols: Record<string, string> = {
   "¥": "CNY",
   "￥": "CNY",
@@ -133,8 +125,20 @@ function validValue(value: unknown): CalcValue {
   return value;
 }
 
-function validateTree(tree: MathNode, scope: Scope): void {
+function validateTree(tree: MathNode, scope: Scope): UnitSides {
   let count = 0;
+  const sides: UnitSides = { imperial: false, metric: false };
+  const see = (name: string) => {
+    if (scope.has(name)) {
+      const fromScope = valueSides(scope.get(name));
+      sides.imperial ||= fromScope.imperial;
+      sides.metric ||= fromScope.metric;
+      return;
+    }
+    const kind = unitKind(name);
+    if (kind === "imperial") sides.imperial = true;
+    if (kind === "metric") sides.metric = true;
+  };
   const walk = (node: MathNode, depth: number) => {
     if (++count > 160 || depth > 32) throw new Error("算式太复杂，请拆成多行");
     switch (node.type) {
@@ -153,6 +157,7 @@ function validateTree(tree: MathNode, scope: Scope): void {
         ) {
           throw new Error(`“${name}”尚未定义`);
         }
+        if (!constants.has(name) && !functions.has(name)) see(name);
         break;
       }
       case "OperatorNode":
@@ -181,6 +186,7 @@ function validateTree(tree: MathNode, scope: Scope): void {
     }
   };
   checkPowers(tree);
+  return sides;
 }
 
 export function formatValue(value: CalcValue): { raw: string; display: string } {
@@ -189,6 +195,34 @@ export function formatValue(value: CalcValue): { raw: string; display: string } 
     digits.replace(/\B(?=(\d{3})+(?!\d))/g, ","),
   );
   return { raw, display };
+}
+
+// 显式转换（to / in / into / as，normalize 后统一是 to）时以用户指定的目标单位为准。
+function hasExplicitConversion(tree: MathNode): boolean {
+  let found = false;
+  const walk = (node: MathNode): void => {
+    if (found) return;
+    if (node.type === "OperatorNode" && (node as OperatorNode).fn === "to") {
+      found = true;
+      return;
+    }
+    node.forEach(walk);
+  };
+  walk(tree);
+  return found;
+}
+
+// 赋值名撞上保留字时给出具体类别：单位、函数、常量、汇总、转换关键字都不可用作变量。
+const conversionKeywords = new Set(["to", "in", "as", "of", "on", "off"]);
+function reservedConflict(name: string): string | null {
+  if (functions.has(name)) return `保留字冲突：“${name}”是函数名，请换一个变量名`;
+  if (constants.has(name)) return `保留字冲突：“${name}”是常量名，请换一个变量名`;
+  if (summaries.has(name)) return `保留字冲突：“${name}”是汇总关键字，请换一个变量名`;
+  if (name === "prev") return `保留字冲突：“prev”指上一行的结果，请换一个变量名`;
+  if (conversionKeywords.has(name)) return `保留字冲突：“${name}”是单位转换关键字，请换一个变量名`;
+  if (aliases[name] || math.Unit.isValuelessUnit(name))
+    return `保留字冲突：“${name}”是单位名，请换一个变量名`;
+  return null;
 }
 
 export function calculate(
@@ -203,8 +237,27 @@ export function calculate(
   });
   if (!expression) throw new Error("先输入一个算式");
   const tree = math.parse(expression);
-  validateTree(tree, scope);
-  const value = validValue(tree.evaluate(scope));
+  const used = validateTree(tree, scope);
+  let value = validValue(tree.evaluate(scope));
+  if (isUnit(value)) {
+    const cancelled = cancelSameDimension(value);
+    if (cancelled.cancelled) {
+      value = cancelled.value as CalcValue;
+      if (isUnit(value)) value.skipAutomaticSimplification = true;
+    } else if (hasExplicitConversion(tree)) {
+      // 显式 to 的目标单位原样呈现，不做公制合并、不做自动换档。
+      value.fixPrefix = true;
+      value.skipAutomaticSimplification = true;
+    } else {
+      // 公制英制混用时把英制并入公制；保留用户写下的单位与前缀，不做自动换档。
+      const preferred = preferMetric(value, used);
+      if (preferred.converted) value = preferred.value as Unit;
+      else value.fixPrefix = true;
+      // createUnit 注册的自定义单位会成为 mathjs 自动简化的目标（如 km/h 被简写成 knot）；
+      // 显示一律保留原单位，需要换算时用显式 to。
+      value.skipAutomaticSimplification = true;
+    }
+  }
   const percentage = Boolean((tree as MathNode & { isPercentage?: boolean }).isPercentage);
   return { value, percentage, ...formatValue(value) };
 }
@@ -266,17 +319,8 @@ export function evaluateNotebook(text: string): LineResult[] {
       if (!intent) return { source, kind: "note" };
       try {
         if (name) {
-          if (
-            functions.has(name) ||
-            constants.has(name) ||
-            summaries.has(name) ||
-            name === "prev" ||
-            ["to", "in", "as", "of", "on", "off"].includes(name) ||
-            aliases[name] ||
-            math.Unit.isValuelessUnit(name)
-          ) {
-            throw new Error(`“${name}”是保留名称，请换一个变量名`);
-          }
+          const conflict = reservedConflict(name);
+          if (conflict) throw new Error(conflict);
           scope.delete(name);
           percentages.delete(name);
         }
@@ -290,6 +334,21 @@ export function evaluateNotebook(text: string): LineResult[] {
             .reduce<CalcValue>((total, item) => validValue(math.add(total, item)), block[0]);
           if (["avg", "average", "平均"].includes(expression))
             value = validValue(math.divide(value, math.bignumber(block.length)));
+          // 段内公制英制混用时，汇总结果同样并入公制。
+          const used = block.reduce<UnitSides>(
+            (sides, item) => {
+              const part = valueSides(item);
+              return {
+                imperial: sides.imperial || part.imperial,
+                metric: sides.metric || part.metric,
+              };
+            },
+            { imperial: false, metric: false },
+          );
+          const preferred = preferMetric(value, used);
+          if (preferred.converted) value = preferred.value as Unit;
+          else if (isUnit(value)) value.fixPrefix = true;
+          if (isUnit(value)) value.skipAutomaticSimplification = true;
         } else {
           const calculation = calculate(expression, scope, percentages);
           value = calculation.value;

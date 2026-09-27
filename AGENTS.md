@@ -26,6 +26,13 @@ pnpm check:native     # Rust 格式、clippy、持久化测试
 pnpm bench            # 计算引擎性能基线
 ```
 
+## 会话收尾：构建与清理
+
+- 每次会话结束前构建一次 .app：`pnpm desktop:build --bundles app`，产物在 `target/release/bundle/macos/Calcbook.app`。只出 `.app`，不构建 dmg。会话改了功能或用户可见行为时，先按「每次变更」升级版本号再构建。
+- `target/release/` 整体保留，作为下次的增量编译缓存；不要清理、缩小或删除它，用户会手动清理。
+- 构建完成后清理对增量编译无用的过程文件：删除 `dist/`（前端产物已嵌入 .app，下次 `pnpm build` 重新生成）和 `src-tauri/gen/`（tauri 构建时自动重建）；若 `target/release/bundle/` 下出现 `.dmg` 一并删除，只保留 `macos/Calcbook.app`。
+- `target/debug/` 供 `tauri dev` 与 `check:native` 使用，按同一原则保留。
+
 ## 不变量
 
 1. `src/domain/` 是纯 TypeScript；不依赖 React、DOM、Tauri 或持久化。

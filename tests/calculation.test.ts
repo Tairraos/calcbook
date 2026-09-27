@@ -52,3 +52,25 @@ test("calculator display rounds to three places and switches at ten integer digi
     assert.equal(result.display, display, source);
   }
 });
+test("assignment names conflicting with reserved words name the conflict", () => {
+  for (const [source, category] of [
+    ["月 = 12", "单位名"],
+    ["kg = 7", "单位名"],
+    ["sqrt = 3", "函数名"],
+    ["pi = 3", "常量名"],
+    ["sum = 9", "汇总关键字"],
+    ["平均 = 1", "汇总关键字"],
+    ["to = 3", "单位转换关键字"],
+    ["prev = 5", "上一行的结果"],
+  ] as const) {
+    const [line] = evaluateNotebook(source);
+    assert.equal(line.kind, "error", source);
+    assert.match(line.error ?? "", /^保留字冲突：/, source);
+    assert.match(line.error ?? "", new RegExp(category), source);
+  }
+  // 右边使用常量、左边是普通名字的赋值不受影响。
+  assert.deepEqual(
+    evaluateNotebook("体重 = 70\n天数 = 3\n周长 = pi × 3").map((line) => line.kind),
+    ["result", "result", "result"],
+  );
+});

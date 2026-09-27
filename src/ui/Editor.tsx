@@ -11,6 +11,7 @@ type Props = {
   onCopy: (text: string) => void;
   activeLine: number;
   onActiveLine: (line: number) => void;
+  onBlurEditor?: () => void;
   editorRef: RefObject<HTMLTextAreaElement | null>;
   readOnly?: boolean;
 };
@@ -41,6 +42,7 @@ export function Editor({
   onCopy,
   activeLine,
   onActiveLine,
+  onBlurEditor,
   editorRef,
   readOnly,
 }: Props) {
@@ -91,6 +93,12 @@ export function Editor({
               selectLine(event.target);
             }}
             onSelect={(event) => selectLine(event.currentTarget)}
+            onClick={(event) => selectLine(event.currentTarget)}
+            onKeyUp={(event) => selectLine(event.currentTarget)}
+            onBlur={(event) => {
+              selectLine(event.currentTarget);
+              onBlurEditor?.();
+            }}
             onScroll={(event) => setScrollLeft(event.currentTarget.scrollLeft)}
             wrap="off"
             spellCheck={false}

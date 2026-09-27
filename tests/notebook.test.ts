@@ -45,3 +45,33 @@ test("legacy and removed themes migrate without changing notes", () => {
     assert.deepEqual(migrated.notes, workspace.notes);
   }
 });
+test("note filenames stay inside the data directory", () => {
+  const workspace = createWorkspace(new Date().toISOString(), () => crypto.randomUUID());
+  // 旧数据没有 filename 字段：读取后为空，由存储层按标题推导。
+  const without = parseWorkspace({
+    ...workspace,
+    notes: workspace.notes.map(({ filename: _filename, ...note }) => note),
+  });
+  assert.deepEqual(
+    without.notes.map((note) => note.filename),
+    workspace.notes.map(() => ""),
+  );
+  for (const filename of ["../escape.txt", "notes/预算.txt", "x".repeat(201)]) {
+    assert.throws(() =>
+      parseWorkspace({
+        ...workspace,
+        notes: [{ ...workspace.notes[0], filename }, ...workspace.notes.slice(1)],
+      }),
+    );
+  }
+});
+test("unit mode persists and rejects unknown values", () => {
+  const workspace = createWorkspace(new Date().toISOString(), () => crypto.randomUUID());
+  workspace.unitMode = "chinese";
+  assert.equal(parseWorkspace(JSON.parse(JSON.stringify(workspace))).unitMode, "chinese");
+  // 旧数据没有 unitMode：默认自由单位。
+  const legacy = JSON.parse(JSON.stringify(workspace));
+  delete legacy.unitMode;
+  assert.equal(parseWorkspace(legacy).unitMode, "free");
+  assert.throws(() => parseWorkspace({ ...workspace, unitMode: "traditional" }));
+});

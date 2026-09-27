@@ -1,3 +1,5 @@
+import { DEFAULT_UNIT_MODE, parseUnitMode, type UnitMode } from "./units.ts";
+
 export const MAX_NOTES = 100;
 export const MAX_NOTE_LENGTH = 100_000;
 export const MAX_TITLE_LENGTH = 120;
@@ -14,6 +16,8 @@ const LEGACY_THEMES: Record<string, Theme> = {
 export type Note = {
   id: string;
   title: string;
+  // 桌面版里正文单独存成 <filename>.txt；空字符串表示由标题推导，由存储层决定。
+  filename: string;
   body: string;
   createdAt: string;
   updatedAt: string;
@@ -24,10 +28,11 @@ export type Workspace = {
   notes: Note[];
   activeId: string | null;
   theme: Theme;
+  unitMode: UnitMode;
 };
 
 export function createNote(id: string, now: string, title = "未命名笔记", body = ""): Note {
-  return { id, title, body, createdAt: now, updatedAt: now, trashed: false };
+  return { id, title, filename: "", body, createdAt: now, updatedAt: now, trashed: false };
 }
 
 const examples = [
@@ -47,7 +52,7 @@ const examples = [
 
 export function createWorkspace(now: string, makeId: () => string): Workspace {
   const notes = examples.map((example) => createNote(makeId(), now, example.title, example.body));
-  return { version: 1, notes, activeId: notes[0].id, theme: "paper" };
+  return { version: 1, notes, activeId: notes[0].id, theme: "paper", unitMode: DEFAULT_UNIT_MODE };
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -61,9 +66,11 @@ export function parseWorkspace(input: unknown): Workspace {
     throw new Error("笔记列表无效或超过 100 篇。");
   const theme = LEGACY_THEMES[input.theme as string] ?? input.theme;
   if (!THEME_IDS.includes(theme as Theme)) throw new Error("笔记主题配置无效。");
-  // 旧工作区的 calculatorMode 字段已废弃：读取时忽略，下次保存自然清除。
+  // 旧数据没有 unitMode：默认自由单位。旧工作区的 calculatorMode 字段已废弃：读取时忽略。
+  const unitMode = input.unitMode === undefined ? DEFAULT_UNIT_MODE : parseUnitMode(input.unitMode);
   const ids = new Set<string>();
   const notes = input.notes.map((note): Note => {
+    const filename = record(note) && note.filename !== undefined ? note.filename : "";
     if (
       !record(note) ||
       typeof note.id !== "string" ||
@@ -72,6 +79,9 @@ export function parseWorkspace(input: unknown): Workspace {
       ids.has(note.id) ||
       typeof note.title !== "string" ||
       note.title.length > MAX_TITLE_LENGTH ||
+      typeof filename !== "string" ||
+      filename.length > 200 ||
+      /[\\/]/.test(filename) ||
       typeof note.body !== "string" ||
       note.body.length > MAX_NOTE_LENGTH ||
       typeof note.createdAt !== "string" ||
@@ -86,6 +96,7 @@ export function parseWorkspace(input: unknown): Workspace {
     return {
       id: note.id,
       title: note.title,
+      filename,
       body: note.body,
       createdAt: note.createdAt,
       updatedAt: note.updatedAt,
@@ -95,5 +106,5 @@ export function parseWorkspace(input: unknown): Workspace {
   if (input.activeId !== null && (typeof input.activeId !== "string" || !ids.has(input.activeId))) {
     throw new Error("当前笔记引用无效，原数据已保留。");
   }
-  return { version: 1, notes, activeId: input.activeId, theme: theme as Theme };
+  return { version: 1, notes, activeId: input.activeId, theme: theme as Theme, unitMode };
 }
