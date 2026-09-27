@@ -95,4 +95,13 @@ test("按格式设置格式化整篇", () => {
     formatNoteBody("1  +   2  \n#  标题 ", DEFAULT_FORMAT_SETTINGS, () => null),
     "1 + 2\n# 标题",
   );
+  // 强制规则：操作符词两边空格、函数前空格、标签英文冒号、括号紧贴
+  assert.equal(
+    formatNoteBody(
+      "总价=20%of 150\n面积=sqrt(9)+2\n预算:交通+住宿\n5(3+2)",
+      DEFAULT_FORMAT_SETTINGS,
+      () => null,
+    ),
+    "总价 = 20% of 150\n面积 = sqrt(9) + 2\n预算: 交通 + 住宿\n5(3 + 2)",
+  );
 });

@@ -20,7 +20,6 @@ export type FormatSettings = {
   thousands: boolean; // 数字千分位逗号
   unitSpace: boolean; // 数字和单位之间空格
   percentSpace: boolean; // 数字和百分号之间空格
-  bracketSpace: boolean; // 括号和数字之间空格
   operatorSpace: boolean; // 运算符（+ - * / =）两边空格
   commentSpace: boolean; // 注释符号后空格
   unitStyle: UnitStyle;
@@ -31,12 +30,28 @@ export const DEFAULT_FORMAT_SETTINGS: FormatSettings = {
   thousands: false,
   unitSpace: false,
   percentSpace: false,
-  bracketSpace: false,
   operatorSpace: true,
   commentSpace: true,
   unitStyle: "free",
   unitSystem: "free",
 };
+
+// 强制规则：操作符词（of/to…）两边必须空格；函数前必须空格；括号与数字之间永远不留空格；
+// 标签统一英文冒号加单空格。这些均不可配置。
+const OPERATOR_WORDS = new Set([
+  "of",
+  "on",
+  "off",
+  "to",
+  "in",
+  "into",
+  "as",
+  "plus",
+  "minus",
+  "times",
+  "divided",
+]);
+const FUNCTION_NAMES = new Set(["sqrt", "abs", "round", "ceil", "floor"]);
 
 export function parseFormatSettings(input: unknown): FormatSettings {
   const record =
@@ -51,7 +66,6 @@ export function parseFormatSettings(input: unknown): FormatSettings {
     thousands: bool(record.thousands, DEFAULT_FORMAT_SETTINGS.thousands),
     unitSpace: bool(record.unitSpace, DEFAULT_FORMAT_SETTINGS.unitSpace),
     percentSpace: bool(record.percentSpace, DEFAULT_FORMAT_SETTINGS.percentSpace),
-    bracketSpace: bool(record.bracketSpace, DEFAULT_FORMAT_SETTINGS.bracketSpace),
     operatorSpace: bool(record.operatorSpace, DEFAULT_FORMAT_SETTINGS.operatorSpace),
     commentSpace: bool(record.commentSpace, DEFAULT_FORMAT_SETTINGS.commentSpace),
     unitStyle: oneOf(record.unitStyle, UNIT_STYLES, DEFAULT_FORMAT_SETTINGS.unitStyle),
@@ -206,7 +220,7 @@ export function formatExpression(
     });
   }
 
-  // 重建：按设置插空格
+  // 重建：按设置插空格；强制规则（操作符词/函数/括号/标签）不依赖配置。
   const out: string[] = [];
   tokens.forEach((token, index) => {
     const previous = index > 0 ? tokens[index - 1] : null;
@@ -229,18 +243,24 @@ export function formatExpression(
       } else if (token.kind === "percent") {
         space = settings.percentSpace;
       } else if (token.kind === "colon" || previous.kind === "colon") {
-        space = false; // 比率 16:9 紧凑；标签冒号不在算式段
+        space = false; // 比率 16:9 紧凑；标签冒号统一英文冒号加单空格
+      } else if (token.kind === "word" && FUNCTION_NAMES.has(token.text)) {
+        space = !previousOpening; // 函数前必须空格
+      } else if (
+        (token.kind === "word" && OPERATOR_WORDS.has(token.text)) ||
+        (previous.kind === "word" && OPERATOR_WORDS.has(previous.text))
+      ) {
+        space = !previousOpening && !closing; // 操作符词（of、to…）两边必须空格
       } else if (token.kind === "bracket") {
-        space = closing
-          ? settings.bracketSpace &&
-            (previous.kind === "number" || previous.kind === "percent" || previous.kind === "word")
-          : false; // 左括号紧跟数字/词由「括号空格」在下一轮 previous===bracket 时处理
+        space = false; // 括号和数字/词之间永远不留空格
       } else if (previous.kind === "bracket") {
-        space = previousOpening
-          ? settings.bracketSpace && token.kind === "number"
-          : settings.bracketSpace;
+        space = false;
       } else if (token.kind === "word" && previous.kind === "number") {
         space = settings.unitSpace;
+      } else if (token.kind === "word" && previous.kind === "percent") {
+        space = settings.unitSpace;
+      } else if (token.kind === "word" && previous.kind === "word") {
+        space = true;
       } else if (previous.kind === "word") {
         space = true;
       }

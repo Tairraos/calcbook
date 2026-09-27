@@ -20,7 +20,6 @@ const TOGGLES: { key: keyof FormatSettings; label: string; hint: string }[] = [
   { key: "thousands", label: "千分位逗号", hint: "数字每三位加逗号，如 1,234,567" },
   { key: "unitSpace", label: "数字与单位之间空格", hint: "100L → 100 L" },
   { key: "percentSpace", label: "数字和百分号之间空格", hint: "10% → 10 %" },
-  { key: "bracketSpace", label: "括号和数字之间空格", hint: "(5+3) → ( 5+3 )" },
   { key: "operatorSpace", label: "运算符两边空格", hint: "运算符为 + - * / =" },
   { key: "commentSpace", label: "注释符号后空格", hint: "#标题 → # 标题" },
 ];

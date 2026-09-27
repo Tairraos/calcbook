@@ -39,16 +39,24 @@ const functionGroups: ReferenceGroup[] = [
 
 const aggregateGroups: ReferenceGroup[] = [
   {
-    title: "汇总",
+    title: "魔术词",
     rows: [
       ["sum / total / 合计", "汇总本段（空行分隔）所有成功计算行", "24\n36\nsum → 60"],
       ["avg / average / 平均", "本段成功行的算术平均", "10\n20\navg → 15"],
+      ["prev", "上一个成功结果；标题、注释、空行不清除，错误会清除", "12 × 3\nprev + 4 → 40"],
+    ],
+  },
+  {
+    title: "操作符",
+    rows: [
+      ["of / on / off", "百分比短语", "20% of 150 → 30；10% on 200 → 220；10% off 200 → 180"],
+      ["to / in / into / as", "单位转换", "5 km to m → 5,000 m"],
+      ["plus / minus / times / divided by", "英文运算词", "8 times 9 → 72"],
     ],
   },
   {
     title: "变量与标签",
     rows: [
-      ["prev", "上一个成功结果；标题、注释、空行不清除，错误会清除", "12 × 3\nprev + 4 → 40"],
       ["名称 = 算式", "定义变量，可被后文引用，重新赋值会更新后文", "价格 = 128 → 128"],
       ["说明: 算式", "冒号前是文字标签，不参与计算", "合计: 36 + 6 → 42"],
       ["变量名规则", "支持中英文、数字和下划线，不能以数字开头", "sum=9 → 报错"],
@@ -205,10 +213,30 @@ const unitGroups: ReferenceGroup[] = [
 const tabs = [
   { id: "examples", label: "算式示例" },
   { id: "functions", label: "函数与常量" },
-  { id: "aggregates", label: "汇总与变量" },
+  { id: "aggregates", label: "魔术词与变量" },
   { id: "keywords", label: "关键字" },
   { id: "units", label: "单位与符号" },
 ] as const;
+
+// 单元格富文本：「报错」用出错颜色，「→」用强调色。
+function renderCell(text: string) {
+  const arrowParts = text.split("→");
+  return arrowParts.map((part, partIndex) => {
+    const segments = part.split("报错");
+    const rendered = segments.map((segment, segmentIndex) => (
+      <span key={segmentIndex}>
+        {segmentIndex > 0 && <span className="help-error-word">报错</span>}
+        {segment}
+      </span>
+    ));
+    return (
+      <span key={partIndex}>
+        {partIndex > 0 && <span className="help-arrow">→</span>}
+        {rendered}
+      </span>
+    );
+  });
+}
 
 function ReferenceTable({ title, rows }: ReferenceGroup) {
   return (
@@ -226,11 +254,11 @@ function ReferenceTable({ title, rows }: ReferenceGroup) {
           {rows.map(([term, role, example]) => (
             <tr key={term}>
               <td>
-                <code>{term}</code>
+                <code>{renderCell(term)}</code>
               </td>
-              <td>{role}</td>
+              <td>{renderCell(role)}</td>
               <td>
-                <code>{example.replaceAll("\n", " → ")}</code>
+                <code>{renderCell(example.replaceAll("\n", " → "))}</code>
               </td>
             </tr>
           ))}

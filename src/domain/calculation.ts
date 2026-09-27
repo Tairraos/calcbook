@@ -159,6 +159,7 @@ function validateTree(tree: MathNode, scope: Scope): SeenUnit[] {
     }
     seen.set(key, {
       token,
+      written: token,
       chinese,
       upper,
       kind: unitKind(token),
@@ -230,12 +231,19 @@ function validateTree(tree: MathNode, scope: Scope): SeenUnit[] {
 export type ResultLanguage = "chinese" | "upper" | "lower";
 
 // 结果后缀按算式语言呈现：中文 → 中文单位名（无空格），大写 → 全大写，否则小写。
-export function formatUnitSuffix(formatted: string, language: ResultLanguage): string {
+export function formatUnitSuffix(
+  formatted: string,
+  language: ResultLanguage,
+  chineseNames: Record<string, string> = {},
+): string {
   const split = formatted.indexOf(" ");
   if (split === -1) return formatted;
   const suffix = formatted.slice(split + 1).replace(/([A-Za-z][A-Za-z0-9]*)/g, (token) => {
     if (language === "upper") return token.toUpperCase();
-    if (language === "chinese") return enToZh[token] ?? enToZh[token.toLowerCase()] ?? token;
+    if (language === "chinese")
+      return (
+        chineseNames[token.toLowerCase()] ?? enToZh[token] ?? enToZh[token.toLowerCase()] ?? token
+      );
     return isKnownUnitLower(token.toLowerCase()) ? token.toLowerCase() : token;
   });
   const result = formatted.slice(0, split + 1) + suffix;
@@ -246,10 +254,12 @@ export function formatUnitSuffix(formatted: string, language: ResultLanguage): s
 export function formatValue(
   value: CalcValue,
   language: ResultLanguage = "lower",
+  chineseNames: Record<string, string> = {},
 ): { raw: string; display: string } {
   const raw = formatUnitSuffix(
     math.format(value, { precision: 14, lowerExp: -8, upperExp: 16 }),
     language,
+    chineseNames,
   );
   const display = raw.replace(/^(-?\d+)(?=\.|\s|$)/, (digits: string) =>
     digits.replace(/\B(?=(\d{3})+(?!\d))/g, ","),
@@ -307,6 +317,7 @@ function applyResultUnitRule(
     if (!present.some((unit) => unit.token.toLowerCase() === token.toLowerCase())) {
       present.push({
         token,
+        written: token,
         chinese: false,
         upper: /[A-Z]/.test(token) && token === token.toUpperCase(),
         kind: unitKind(component.unit.name),
@@ -414,6 +425,20 @@ export function calculate(
   const tree = math.parse(expression);
   // 行内单位 token（大小写/中文）+ 作用域变量携带的单位
   const seen = [...scanUnitTokens(source), ...validateTree(tree, scope)];
+  // 同一单位有多种中文写法（公斤/千克）时冲突用规范名；只有一种写法则保留原写法。
+  const writtenForms = new Map<string, Set<string>>();
+  for (const unit of seen) {
+    if (!unit.chinese) continue;
+    const key = unit.token.toLowerCase();
+    const forms = writtenForms.get(key) ?? new Set<string>();
+    forms.add(unit.written);
+    writtenForms.set(key, forms);
+  }
+  const chineseNames: Record<string, string> = {};
+  for (const [canonical, forms] of writtenForms) {
+    chineseNames[canonical] =
+      forms.size === 1 ? [...forms][0] : (enToZh[canonical] ?? [...forms][0]);
+  }
   let value = validValue(tree.evaluate(scope));
   let language: ResultLanguage = "lower";
   if (isUnit(value)) {
@@ -443,7 +468,13 @@ export function calculate(
     }
   }
   const percentage = Boolean((tree as MathNode & { isPercentage?: boolean }).isPercentage);
-  return { value, percentage, language, ...formatValue(value, language) };
+  return {
+    value,
+    percentage,
+    language,
+    chineseNames,
+    ...formatValue(value, language, chineseNames),
+  };
 }
 
 function readableError(error: unknown): string {
@@ -513,6 +544,7 @@ export function evaluateNotebook(text: string): LineResult[] {
         let value: CalcValue;
         let percentage = false;
         let language: ResultLanguage = "lower";
+        let chineseNames: Record<string, string> = {};
         if (isSummary) {
           if (blockHasError) throw new Error("本段含有错误，请修正后再汇总");
           if (!block.length) throw new Error("本段还没有可汇总的结果");
@@ -530,6 +562,7 @@ export function evaluateNotebook(text: string): LineResult[] {
               if (!seenUnits.some((unit) => unit.token.toLowerCase() === token.toLowerCase())) {
                 seenUnits.push({
                   token,
+                  written: token,
                   chinese: false,
                   upper: /[A-Z]/.test(token) && token === token.toUpperCase(),
                   kind: unitKind(component.unit.name),
@@ -551,6 +584,7 @@ export function evaluateNotebook(text: string): LineResult[] {
           value = calculation.value;
           percentage = calculation.percentage;
           language = calculation.language;
+          chineseNames = calculation.chineseNames;
           block.push(value);
           blockLanguages.push(calculation.language);
         }
@@ -561,7 +595,11 @@ export function evaluateNotebook(text: string): LineResult[] {
         scope.set("prev", value);
         percentages.delete("prev");
         if (percentage) percentages.add("prev");
-        return { source, kind: "result", ...formatValue(value, language) };
+        return {
+          source,
+          kind: "result",
+          ...formatValue(value, language, chineseNames),
+        };
       } catch (error) {
         scope.delete("prev");
         percentages.delete("prev");

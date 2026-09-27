@@ -366,6 +366,7 @@ export const TO_MARKET: Record<string, string> = {
 // 源文本里的单位 token：语言（中文/大写/小写）、制式与量级，供引擎决定结果的单位与语言。
 export type SeenUnit = {
   token: string; // 规范英文写法
+  written: string; // 用户写法（公斤/千克/kg…），结果显示时保留
   chinese: boolean;
   upper: boolean;
   kind: UnitSystemKind;
@@ -408,7 +409,8 @@ export function scanUnitTokens(source: string): SeenUnit[] {
     if (!resolved || resolved.token.includes("/")) continue;
     const { token, chinese } = resolved;
     const upper = !chinese && /[A-Z]/.test(word) && word === word.toUpperCase();
-    const key = token.toLowerCase();
+    // 按用户写法区分：公斤与千克是同一单位的两种写法，都要记住才能在冲突时用规范名。
+    const key = word.toLowerCase();
     const existing = seen.get(key);
     if (existing) {
       existing.chinese ||= chinese;
@@ -417,6 +419,7 @@ export function scanUnitTokens(source: string): SeenUnit[] {
     }
     seen.set(key, {
       token,
+      written: chinese ? word : token,
       chinese,
       upper,
       kind: unitKind(token),

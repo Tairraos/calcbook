@@ -1788,3 +1788,12 @@ fieldset.settings-section {
   opacity: 0;
   pointer-events: none;
 }
+.help-error-word {
+  color: var(--error);
+  font-weight: 600;
+}
+.help-arrow {
+  color: var(--help-arrow);
+  font-weight: 700;
+  padding: 0 1px;
+}

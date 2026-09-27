@@ -101,8 +101,6 @@ pub struct FormatSettings {
     unit_space: bool,
     #[serde(default)]
     percent_space: bool,
-    #[serde(default)]
-    bracket_space: bool,
     #[serde(default = "default_true")]
     operator_space: bool,
     #[serde(default = "default_true")]
@@ -119,7 +117,6 @@ impl Default for FormatSettings {
             thousands: false,
             unit_space: false,
             percent_space: false,
-            bracket_space: false,
             operator_space: true,
             comment_space: true,
             unit_style: "free".into(),
