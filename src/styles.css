@@ -615,10 +615,6 @@ kbd {
 .code-line {
   height: var(--editor-line-height);
 }
-.syntax-heading {
-  color: var(--heading-green);
-  font-weight: 400;
-}
 .syntax-comment {
   color: var(--comment);
 }

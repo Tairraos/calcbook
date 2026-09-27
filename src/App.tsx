@@ -800,7 +800,11 @@ export default function App() {
           className="context-menu"
           role="menu"
           aria-label="笔记操作"
-          style={{ left: noteMenu.x, top: noteMenu.y }}
+          style={{
+            // 靠近视口右/下边缘时向内收，避免菜单溢出屏幕
+            left: Math.min(noteMenu.x, window.innerWidth - 168),
+            top: Math.min(noteMenu.y, window.innerHeight - 132),
+          }}
           onContextMenu={(event) => event.preventDefault()}
         >
           <button

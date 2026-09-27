@@ -242,8 +242,11 @@ export function formatExpression(
         space = settings.operatorSpace && !previousUnary && !closing;
       } else if (token.kind === "percent") {
         space = settings.percentSpace;
-      } else if (token.kind === "colon" || previous.kind === "colon") {
-        space = false; // 比率 16:9 紧凑；标签冒号统一英文冒号加单空格
+      } else if (token.kind === "colon") {
+        space = false; // 比率 16:9 紧凑
+      } else if (previous.kind === "colon") {
+        // 标签冒号后的词加空格（a: b:c → a: b: c）；数字仍紧凑（16:9）
+        space = token.kind === "word";
       } else if (token.kind === "word" && FUNCTION_NAMES.has(token.text)) {
         space = !previousOpening; // 函数前必须空格
       } else if (
@@ -254,7 +257,8 @@ export function formatExpression(
       } else if (token.kind === "bracket") {
         space = false; // 括号和数字/词之间永远不留空格
       } else if (previous.kind === "bracket") {
-        space = false;
+        // 左括号后紧贴；右括号后是新的操作数，需要空格（(9)3 → (9) 3）
+        space = !previousOpening;
       } else if (token.kind === "word" && previous.kind === "number") {
         space = settings.unitSpace;
       } else if (token.kind === "word" && previous.kind === "percent") {
