@@ -12,19 +12,26 @@ import {
   type Unit,
 } from "mathjs";
 import {
-  caseUnitAliases,
+  attachMath,
   cancelSameDimension,
+  caseUnitAliases,
+  enToZh,
   isKnownUnitLower,
   parseUnitAliases,
-  preferMetric,
   registerCustomUnits,
-  type UnitSides,
+  type SeenUnit,
+  scanUnitTokens,
+  TO_IMPERIAL,
+  TO_MARKET,
+  TO_METRIC,
+  type UnitSystemKind,
   unitKind,
-  valueSides,
+  unitMagnitude,
 } from "./units.ts";
 
 const math = create(all, { number: "BigNumber", precision: 64, predictable: true });
 registerCustomUnits(math);
+attachMath(math);
 const originalIsAlpha = math.parse.isAlpha;
 math.parse.isAlpha = (character, previous, next) =>
   /^\p{L}$/u.test(character) || originalIsAlpha(character, previous, next);
@@ -33,7 +40,7 @@ for (const currency of ["CNY", "USD", "EUR", "GBP"]) math.createUnit(currency);
 export type CalcValue = BigNumber | Unit;
 type Scope = Map<string, CalcValue>;
 export type LineResult = {
-  kind: "empty" | "note" | "heading" | "result" | "error";
+  kind: "empty" | "note" | "result" | "error";
   source: string;
   display?: string;
   raw?: string;
@@ -99,9 +106,11 @@ function normalize(source: string): string {
       (match, number: string) => `${number} ${currencySymbols[match[0]]}`,
     )
     .replace(/(?<=\d),(?=\d{3}(?:\D|$))/g, "")
-    .replace(/[\p{L}_][\p{L}\p{N}_]*/gu, (word) =>
+    .replace(
+      /[\p{L}_][\p{L}\p{N}_]*/gu,
+      (word) =>
         aliases[word] ?? aliases[word.toLowerCase()] ?? caseUnitAliases[word.toLowerCase()] ?? word,
-      )
+    )
     .replace(/\b(?:in|into|as)\b/g, "to")
     .replace(/\bplus\b/g, "+")
     .replace(/\bminus\b/g, "-")
@@ -129,19 +138,44 @@ function validValue(value: unknown): CalcValue {
   return value;
 }
 
-function validateTree(tree: MathNode, scope: Scope): UnitSides {
+// mathjs 的类型把 prefix 标成 string，运行时是带 name 的前缀对象；拼出规范 token。
+function canonicalToken(component: { prefix: unknown; unit: { name: string } }): string {
+  const prefix = (component.prefix as unknown as { name?: string } | string) ?? "";
+  const prefixName = typeof prefix === "string" ? prefix : (prefix.name ?? "");
+  return `${prefixName}${component.unit.name}`;
+}
+
+function validateTree(tree: MathNode, scope: Scope): SeenUnit[] {
   let count = 0;
-  const sides: UnitSides = { imperial: false, metric: false };
-  const see = (name: string) => {
-    if (scope.has(name)) {
-      const fromScope = valueSides(scope.get(name));
-      sides.imperial ||= fromScope.imperial;
-      sides.metric ||= fromScope.metric;
+  const seen = new Map<string, SeenUnit>();
+  const addSeen = (token: string, chinese: boolean) => {
+    const key = token.toLowerCase();
+    const upper = !chinese && /[A-Z]/.test(token) && token === token.toUpperCase();
+    const existing = seen.get(key);
+    if (existing) {
+      existing.chinese ||= chinese;
+      existing.upper ||= upper;
       return;
     }
-    const kind = unitKind(name);
-    if (kind === "imperial") sides.imperial = true;
-    if (kind === "metric") sides.metric = true;
+    seen.set(key, {
+      token,
+      chinese,
+      upper,
+      kind: unitKind(token),
+      mag: unitMagnitude(token),
+    });
+  };
+  const see = (name: string) => {
+    if (scope.has(name)) {
+      const scopedValue = scope.get(name);
+      if (isUnit(scopedValue)) {
+        for (const component of scopedValue.units) {
+          addSeen(canonicalToken(component), false);
+        }
+      }
+      return;
+    }
+    addSeen(name, false);
   };
   const walk = (node: MathNode, depth: number) => {
     if (++count > 160 || depth > 32) throw new Error("算式太复杂，请拆成多行");
@@ -190,22 +224,34 @@ function validateTree(tree: MathNode, scope: Scope): UnitSides {
     }
   };
   checkPowers(tree);
-  return sides;
+  return [...seen.values()];
 }
 
-// 结果里的英文单位统一成小写缩写（规则允许保留英文时）；小写形式经单位表可重新解析。
-function lowercaseUnitSuffix(formatted: string): string {
+export type ResultLanguage = "chinese" | "upper" | "lower";
+
+// 结果后缀按算式语言呈现：中文 → 中文单位名（无空格），大写 → 全大写，否则小写。
+export function formatUnitSuffix(formatted: string, language: ResultLanguage): string {
   const split = formatted.indexOf(" ");
   if (split === -1) return formatted;
-  const suffix = formatted.slice(split + 1).replace(/([A-Za-z][A-Za-z0-9]*)/g, (token) =>
-    isKnownUnitLower(token.toLowerCase()) ? token.toLowerCase() : token,
-  );
-  return formatted.slice(0, split + 1) + suffix;
+  const suffix = formatted.slice(split + 1).replace(/([A-Za-z][A-Za-z0-9]*)/g, (token) => {
+    if (language === "upper") return token.toUpperCase();
+    if (language === "chinese") return enToZh[token] ?? enToZh[token.toLowerCase()] ?? token;
+    return isKnownUnitLower(token.toLowerCase()) ? token.toLowerCase() : token;
+  });
+  const result = formatted.slice(0, split + 1) + suffix;
+  if (language === "chinese") return result.replace(/ +(\P{ASCII})|(\P{ASCII}) +/gu, "$1$2");
+  return result;
 }
 
-export function formatValue(value: CalcValue): { raw: string; display: string } {
-  const raw = lowercaseUnitSuffix(math.format(value, { precision: 14, lowerExp: -8, upperExp: 16 }));
-  const display = raw.replace(/^(-?\d+)(?=\.|\s|$)/, (digits) =>
+export function formatValue(
+  value: CalcValue,
+  language: ResultLanguage = "lower",
+): { raw: string; display: string } {
+  const raw = formatUnitSuffix(
+    math.format(value, { precision: 14, lowerExp: -8, upperExp: 16 }),
+    language,
+  );
+  const display = raw.replace(/^(-?\d+)(?=\.|\s|$)/, (digits: string) =>
     digits.replace(/\B(?=(\d{3})+(?!\d))/g, ","),
   );
   return { raw, display };
@@ -239,6 +285,121 @@ function reservedConflict(name: string): string | null {
   return null;
 }
 
+// 结果单位规则：制式优先级 公制 > 英制 > 市制；同制式内向更小的单位靠拢；
+// 结果的单位语言跟随算式（中文 > 大写英文 > 小写英文）。
+function applyResultUnitRule(
+  value: CalcValue,
+  seen: SeenUnit[],
+  forcedLanguage?: ResultLanguage,
+): { value: CalcValue; language: ResultLanguage } {
+  const language: ResultLanguage =
+    forcedLanguage ??
+    (seen.some((unit) => unit.chinese)
+      ? "chinese"
+      : seen.some((unit) => unit.upper)
+        ? "upper"
+        : "lower");
+  if (!isUnit(value)) return { value, language };
+  // 汇总 seen：行内 token + 结果自身分量（scope 变量的分量已在树里收集）。
+  const present: SeenUnit[] = [...seen];
+  for (const component of value.units) {
+    const token = canonicalToken(component);
+    if (!present.some((unit) => unit.token.toLowerCase() === token.toLowerCase())) {
+      present.push({
+        token,
+        chinese: false,
+        upper: /[A-Z]/.test(token) && token === token.toUpperCase(),
+        kind: unitKind(component.unit.name),
+        mag: unitMagnitude(token),
+      });
+    }
+  }
+  const target = (["metric", "imperial", "market"] as const).find((system) =>
+    present.some((unit) => unit.kind === system),
+  );
+  if (target) {
+    const dimensions = JSON.stringify(value.dimensions);
+    const candidates = present
+      .filter(
+        (unit) =>
+          unit.kind === target &&
+          !unit.token.includes("/") &&
+          JSON.stringify(math.unit(1, unit.token).dimensions) === dimensions,
+      )
+      .sort((a, b) => a.mag - b.mag);
+    if (candidates.length && candidates[0].token) {
+      try {
+        const converted = value.to(candidates[0].token);
+        converted.fixPrefix = false;
+        converted.skipAutomaticSimplification = true;
+        return { value: converted, language };
+      } catch {
+        // 换算失败保持原样
+      }
+    } else if (value.units.length === 1) {
+      // 没有同量纲候选（如速度 km/hour）：按制式换算表整支换算。
+      const map = target === "metric" ? TO_METRIC : target === "imperial" ? TO_IMPERIAL : TO_MARKET;
+      const fallback = map[value.units[0].unit.name];
+      if (fallback && fallback !== value.units[0].unit.name) {
+        try {
+          const converted = value.to(fallback);
+          converted.fixPrefix = false;
+          converted.skipAutomaticSimplification = true;
+          return { value: converted, language };
+        } catch {
+          // 换算失败保持原样
+        }
+      }
+    }
+  }
+  value.skipAutomaticSimplification = true;
+  return { value, language };
+}
+
+// 算式语言：中文 > 大写英文 > 小写英文。
+function seenLanguage(seen: SeenUnit[]): ResultLanguage {
+  return seen.some((unit) => unit.chinese)
+    ? "chinese"
+    : seen.some((unit) => unit.upper)
+      ? "upper"
+      : "lower";
+}
+
+// 复合单位（如速度）在制式不同时按分量换算到目标制式。
+function convertCompoundComponents(value: Unit, target: UnitSystemKind): Unit {
+  const numerator: string[] = [];
+  const denominator: string[] = [];
+  let changed = false;
+  for (const component of value.units) {
+    const canonical = canonicalToken(component);
+    const kind = unitKind(component.unit.name);
+    let replacement = canonical;
+    if (kind !== target && kind !== "neutral" && kind !== "none") {
+      const map = target === "metric" ? TO_METRIC : target === "imperial" ? TO_IMPERIAL : TO_MARKET;
+      const candidate = map[component.unit.name];
+      if (candidate && !candidate.includes("/")) {
+        replacement = candidate;
+        changed = true;
+      }
+    }
+    const token =
+      Math.abs(component.power) === 1 ? replacement : `${replacement}^${Math.abs(component.power)}`;
+    (component.power < 0 ? denominator : numerator).push(token);
+  }
+  if (!changed || !numerator.length) return value;
+  try {
+    const target2 = denominator.length
+      ? `${numerator.join(" * ")} / ${denominator.join(" / ")}`
+      : numerator.join(" * ");
+    const converted = value.to(target2);
+    converted.fixPrefix = false;
+    converted.skipAutomaticSimplification = true;
+    return converted;
+  } catch {
+    return value;
+  }
+}
+
 export function calculate(
   source: string,
   scope: Scope = new Map(),
@@ -251,29 +412,38 @@ export function calculate(
   });
   if (!expression) throw new Error("先输入一个算式");
   const tree = math.parse(expression);
-  const used = validateTree(tree, scope);
+  // 行内单位 token（大小写/中文）+ 作用域变量携带的单位
+  const seen = [...scanUnitTokens(source), ...validateTree(tree, scope)];
   let value = validValue(tree.evaluate(scope));
+  let language: ResultLanguage = "lower";
   if (isUnit(value)) {
     const cancelled = cancelSameDimension(value);
+    const explicit = hasExplicitConversion(tree);
+    language = explicit ? seenLanguage(seen) : "lower";
     if (cancelled.cancelled) {
       value = cancelled.value as CalcValue;
-      if (isUnit(value)) value.skipAutomaticSimplification = true;
-    } else if (hasExplicitConversion(tree)) {
-      // 显式 to 的目标单位原样呈现，不做公制合并、不做自动换档。
+      language = explicit ? language : "lower";
+    } else if (explicit) {
+      // 显式 to 的目标单位原样呈现，不做制式合并、不做最小单位靠拢。
       value.fixPrefix = true;
       value.skipAutomaticSimplification = true;
     } else {
-      // 公制英制混用时把英制并入公制；保留用户写下的单位与前缀，不做自动换档。
-      const preferred = preferMetric(value, used);
-      if (preferred.converted) value = preferred.value as Unit;
-      else value.fixPrefix = true;
-      // createUnit 注册的自定义单位会成为 mathjs 自动简化的目标（如 km/h 被简写成 knot）；
-      // 显示一律保留原单位，需要换算时用显式 to。
+      const applied = applyResultUnitRule(value, seen);
+      value = applied.value as Unit;
+      language = applied.language;
+    }
+    if (isUnit(value) && !explicit) {
+      // 复合单位在制式不同时的分量换算（速度等）。
+      const target = (["metric", "imperial", "market"] as const).find((system) =>
+        seen.some((unit) => unit.kind === system),
+      );
+      if (target) value = convertCompoundComponents(value, target);
+      value.fixPrefix = true;
       value.skipAutomaticSimplification = true;
     }
   }
   const percentage = Boolean((tree as MathNode & { isPercentage?: boolean }).isPercentage);
-  return { value, percentage, ...formatValue(value) };
+  return { value, percentage, language, ...formatValue(value, language) };
 }
 
 function readableError(error: unknown): string {
@@ -295,6 +465,7 @@ export function evaluateNotebook(text: string): LineResult[] {
   const scope: Scope = new Map();
   const percentages = new Set<string>();
   let block: CalcValue[] = [];
+  let blockLanguages: ResultLanguage[] = [];
   let blockHasError = false;
   return text
     .replace(/\r\n?/g, "\n")
@@ -303,12 +474,13 @@ export function evaluateNotebook(text: string): LineResult[] {
       const trimmed = source.trim();
       if (!trimmed) {
         block = [];
+        blockLanguages = [];
         blockHasError = false;
         return { source, kind: "empty" };
       }
-      if (trimmed.startsWith("#")) return { source, kind: "heading" };
-      if (trimmed.startsWith("//")) return { source, kind: "note" };
-      let expression = trimmed.split("//")[0].trim();
+      // # 与 // 作用一致：整行是注释（可当标题），尾部注释剥离后重算。
+      if (trimmed.startsWith("#") || trimmed.startsWith("//")) return { source, kind: "note" };
+      let expression = trimmed.split("//")[0].split("#")[0].trim();
       const label = expression.search(/[:：]/);
       // 冒号前是纯数字时是比率（16:9），不是“说明: 算式”的标签分隔符。
       if (label >= 0 && !/^-?\d+(?:\.\d+)?$/.test(expression.slice(0, label).trim())) {
@@ -340,6 +512,7 @@ export function evaluateNotebook(text: string): LineResult[] {
         }
         let value: CalcValue;
         let percentage = false;
+        let language: ResultLanguage = "lower";
         if (isSummary) {
           if (blockHasError) throw new Error("本段含有错误，请修正后再汇总");
           if (!block.length) throw new Error("本段还没有可汇总的结果");
@@ -348,26 +521,38 @@ export function evaluateNotebook(text: string): LineResult[] {
             .reduce<CalcValue>((total, item) => validValue(math.add(total, item)), block[0]);
           if (["avg", "average", "平均"].includes(expression))
             value = validValue(math.divide(value, math.bignumber(block.length)));
-          // 段内公制英制混用时，汇总结果同样并入公制。
-          const used = block.reduce<UnitSides>(
-            (sides, item) => {
-              const part = valueSides(item);
-              return {
-                imperial: sides.imperial || part.imperial,
-                metric: sides.metric || part.metric,
-              };
-            },
-            { imperial: false, metric: false },
-          );
-          const preferred = preferMetric(value, used);
-          if (preferred.converted) value = preferred.value as Unit;
-          else if (isUnit(value)) value.fixPrefix = true;
-          if (isUnit(value)) value.skipAutomaticSimplification = true;
+          // 汇总同样按「制式优先级 + 最小单位」规则呈现。
+          const seenUnits: SeenUnit[] = [];
+          for (const item of block) {
+            if (!isUnit(item)) continue;
+            for (const component of item.units) {
+              const token = canonicalToken(component);
+              if (!seenUnits.some((unit) => unit.token.toLowerCase() === token.toLowerCase())) {
+                seenUnits.push({
+                  token,
+                  chinese: false,
+                  upper: /[A-Z]/.test(token) && token === token.toUpperCase(),
+                  kind: unitKind(component.unit.name),
+                  mag: unitMagnitude(token),
+                });
+              }
+            }
+          }
+          const blockLanguage: ResultLanguage = blockLanguages.some((item) => item === "chinese")
+            ? "chinese"
+            : blockLanguages.some((item) => item === "upper")
+              ? "upper"
+              : "lower";
+          const applied = applyResultUnitRule(value, seenUnits, blockLanguage);
+          value = applied.value as CalcValue;
+          language = applied.language;
         } else {
           const calculation = calculate(expression, scope, percentages);
           value = calculation.value;
           percentage = calculation.percentage;
+          language = calculation.language;
           block.push(value);
+          blockLanguages.push(calculation.language);
         }
         if (name) {
           scope.set(name, value);
@@ -376,7 +561,7 @@ export function evaluateNotebook(text: string): LineResult[] {
         scope.set("prev", value);
         percentages.delete("prev");
         if (percentage) percentages.add("prev");
-        return { source, kind: "result", ...formatValue(value) };
+        return { source, kind: "result", ...formatValue(value, language) };
       } catch (error) {
         scope.delete("prev");
         percentages.delete("prev");
@@ -386,9 +571,20 @@ export function evaluateNotebook(text: string): LineResult[] {
     });
 }
 
+// 文本格式化用的单位换算（需要已注册自定义单位的 mathjs 实例）。
+export function convertUnitQuantity(value: number, from: string, to: string): number | null {
+  try {
+    const converted = math.unit(value, from).to(to);
+    const number = Number(converted.toNumber(to));
+    return Number.isFinite(number) ? number : null;
+  } catch {
+    return null;
+  }
+}
+
 export function calculateInput(expression: string) {
   try {
-    const { value } = calculate(expression);
+    const { value, language } = calculate(expression);
     const display = math.format(value, (numeric: BigNumber | number) => {
       const decimal = isBigNumber(numeric) ? numeric : math.bignumber(numeric);
       const rounded = decimal.toDecimalPlaces(3);
@@ -400,8 +596,11 @@ export function calculateInput(expression: string) {
     });
     return {
       ok: true as const,
-      raw: lowercaseUnitSuffix(math.format(value, { precision: 64, lowerExp: -8, upperExp: 16 })),
-      display: lowercaseUnitSuffix(display),
+      raw: formatUnitSuffix(
+        math.format(value, { precision: 64, lowerExp: -8, upperExp: 16 }),
+        language,
+      ),
+      display: formatUnitSuffix(display, language),
     };
   } catch (error) {
     return { ok: false as const, error: readableError(error) };

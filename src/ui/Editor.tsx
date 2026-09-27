@@ -11,15 +11,16 @@ type Props = {
   onCopy: (text: string) => void;
   activeLine: number;
   onActiveLine: (line: number) => void;
-  onBlurEditor?: () => void;
   editorRef: RefObject<HTMLTextAreaElement | null>;
   readOnly?: boolean;
 };
 
 function Highlight({ line }: { line: LineResult }) {
-  if (line.kind === "heading") return <span className="syntax-heading">{line.source}</span>;
   if (line.kind === "note") return <span className="syntax-comment">{line.source}</span>;
-  return line.source.split(/(\d+(?:\.\d+)?|[=+\-×÷*/%()[\]{}:：])/g).map((part, index) => (
+  // 行尾注释（// 或 #）用注释色渲染；计算结果落在右侧结果区
+  const comment = /^(.*?)(\s(?:\/\/|#).*)$/.exec(line.source);
+  const source = comment ? comment[1] : line.source;
+  const parts = source.split(/(\d+(?:\.\d+)?|[=+\-×÷*/%()[\]{}:：])/g).map((part, index) => (
     <span
       key={`${index}-${part}`}
       className={
@@ -33,6 +34,14 @@ function Highlight({ line }: { line: LineResult }) {
       {part}
     </span>
   ));
+  return comment ? (
+    <>
+      {parts}
+      <span className="syntax-comment">{comment[2]}</span>
+    </>
+  ) : (
+    parts
+  );
 }
 
 export function Editor({
@@ -42,7 +51,6 @@ export function Editor({
   onCopy,
   activeLine,
   onActiveLine,
-  onBlurEditor,
   editorRef,
   readOnly,
 }: Props) {
@@ -95,10 +103,7 @@ export function Editor({
             onSelect={(event) => selectLine(event.currentTarget)}
             onClick={(event) => selectLine(event.currentTarget)}
             onKeyUp={(event) => selectLine(event.currentTarget)}
-            onBlur={(event) => {
-              selectLine(event.currentTarget);
-              onBlurEditor?.();
-            }}
+            onBlur={(event) => selectLine(event.currentTarget)}
             onScroll={(event) => setScrollLeft(event.currentTarget.scrollLeft)}
             wrap="off"
             spellCheck={false}

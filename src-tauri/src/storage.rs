@@ -32,8 +32,8 @@ pub struct Payload {
     notes: Vec<PayloadNote>,
     active_id: Option<String>,
     theme: String,
-    #[serde(default = "default_unit_mode")]
-    unit_mode: String,
+    #[serde(default)]
+    format: FormatSettings,
 }
 
 /// 落盘的元数据：正文在 .txt 文件里，这里不重复保存。
@@ -55,8 +55,8 @@ struct Meta {
     notes: Vec<MetaNote>,
     active_id: Option<String>,
     theme: String,
-    #[serde(default = "default_unit_mode")]
-    unit_mode: String,
+    #[serde(default)]
+    format: FormatSettings,
 }
 
 /// 读取时兼容改造前的单文件格式：正文内联在 workspace.json 里，且没有 filename。
@@ -82,7 +82,7 @@ struct Stored {
     active_id: Option<String>,
     theme: String,
     #[serde(default)]
-    unit_mode: Option<String>,
+    format: Option<FormatSettings>,
 }
 
 fn valid_theme(theme: &str) -> bool {
@@ -92,12 +92,62 @@ fn valid_theme(theme: &str) -> bool {
     )
 }
 
-fn default_unit_mode() -> String {
-    "free".into()
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct FormatSettings {
+    #[serde(default)]
+    thousands: bool,
+    #[serde(default)]
+    unit_space: bool,
+    #[serde(default)]
+    percent_space: bool,
+    #[serde(default)]
+    bracket_space: bool,
+    #[serde(default = "default_true")]
+    operator_space: bool,
+    #[serde(default = "default_true")]
+    comment_space: bool,
+    #[serde(default)]
+    unit_style: String,
+    #[serde(default)]
+    unit_system: String,
 }
 
-fn valid_unit_mode(mode: &str) -> bool {
-    matches!(mode, "free" | "chinese" | "english")
+impl Default for FormatSettings {
+    fn default() -> Self {
+        FormatSettings {
+            thousands: false,
+            unit_space: false,
+            percent_space: false,
+            bracket_space: false,
+            operator_space: true,
+            comment_space: true,
+            unit_style: "free".into(),
+            unit_system: "free".into(),
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl FormatSettings {
+    fn validate(&self) -> Result<(), String> {
+        if !matches!(
+            self.unit_style.as_str(),
+            "free" | "chinese" | "upper" | "lower"
+        ) {
+            return Err("单位风格配置无效".into());
+        }
+        if !matches!(
+            self.unit_system.as_str(),
+            "free" | "metric" | "imperial" | "market"
+        ) {
+            return Err("单位制配置无效".into());
+        }
+        Ok(())
+    }
 }
 
 fn truncate_bytes(text: &str, limit: usize) -> String {
@@ -204,7 +254,7 @@ fn meta_from(payload: &Payload) -> Meta {
             .collect(),
         active_id: payload.active_id.clone(),
         theme: payload.theme.clone(),
-        unit_mode: payload.unit_mode.clone(),
+        format: payload.format.clone(),
     }
 }
 
@@ -231,12 +281,8 @@ fn validate_stored(stored: &Stored) -> Result<(), String> {
     if !valid_theme(&stored.theme) {
         return Err("主题配置无效".into());
     }
-    if stored
-        .unit_mode
-        .as_ref()
-        .is_some_and(|mode| !valid_unit_mode(mode))
-    {
-        return Err("单位模式配置无效".into());
+    if let Some(format) = stored.format.as_ref() {
+        format.validate()?;
     }
     let mut ids = HashSet::new();
     for note in &stored.notes {
@@ -320,7 +366,7 @@ fn load_inner(directory: &Path, migrate: bool) -> Result<Option<Payload>, String
         notes,
         active_id: stored.active_id.clone(),
         theme: stored.theme.clone(),
-        unit_mode: stored.unit_mode.clone().unwrap_or_else(default_unit_mode),
+        format: stored.format.clone().unwrap_or_default(),
     };
     if migrated && migrate {
         save(directory, &payload)?;
@@ -335,9 +381,7 @@ pub fn save(directory: &Path, payload: &Payload) -> Result<(), String> {
     if !valid_theme(&payload.theme) {
         return Err("主题配置无效".into());
     }
-    if !valid_unit_mode(&payload.unit_mode) {
-        return Err("单位模式配置无效".into());
-    }
+    payload.format.validate()?;
     let mut ids = HashSet::new();
     for note in &payload.notes {
         if note.id.is_empty()
@@ -554,7 +598,7 @@ mod tests {
             }],
             active_id: Some("note-1".into()),
             theme: "paper".into(),
-            unit_mode: "free".into(),
+            format: FormatSettings::default(),
         }
     }
 
@@ -794,31 +838,31 @@ mod tests {
     }
 
     #[test]
-    fn unit_mode_is_validated_and_defaults_to_free() {
-        let directory = temporary("unit-mode");
+    fn format_settings_are_validated_and_default_to_free() {
+        let directory = temporary("format-settings");
         let mut workspace = sample();
-        workspace.unit_mode = "chinese".into();
+        workspace.format.unit_style = "chinese".into();
         save(&directory, &workspace).unwrap();
         assert_eq!(load(&directory).unwrap().unwrap(), workspace);
 
         let mut invalid = workspace.clone();
-        invalid.unit_mode = "traditional".into();
+        invalid.format.unit_style = "traditional".into();
         assert!(save(&directory, &invalid).is_err());
 
-        // 元数据里出现非法单位模式时拒绝读取，不静默回退。
+        // 元数据里出现非法单位风格时拒绝读取，不静默回退。
         let path = directory.join(WORKSPACE_FILE);
         let meta: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         let mut corrupted = meta.clone();
-        corrupted["unitMode"] = "traditional".into();
+        corrupted["format"]["unitStyle"] = "traditional".into();
         fs::write(&path, serde_json::to_vec(&corrupted).unwrap()).unwrap();
         assert!(load(&directory).is_err());
 
-        // 旧文件没有 unitMode 字段：默认自由单位。
+        // 旧文件没有 format 字段：按默认格式设置。
         let mut legacy = meta;
-        legacy.as_object_mut().unwrap().remove("unitMode");
+        legacy.as_object_mut().unwrap().remove("format");
         fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
         let loaded = load(&directory).unwrap().unwrap();
-        assert_eq!(loaded.unit_mode, "free");
+        assert_eq!(loaded.format, FormatSettings::default());
         assert_eq!(loaded.notes, workspace.notes);
         fs::remove_dir_all(directory).unwrap();
     }

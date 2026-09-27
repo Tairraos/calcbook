@@ -1,4 +1,4 @@
-import { DEFAULT_UNIT_MODE, parseUnitMode, type UnitMode } from "./units.ts";
+import { DEFAULT_FORMAT_SETTINGS, type FormatSettings, parseFormatSettings } from "./formatting.ts";
 
 export const MAX_NOTES = 100;
 export const MAX_NOTE_LENGTH = 100_000;
@@ -28,7 +28,7 @@ export type Workspace = {
   notes: Note[];
   activeId: string | null;
   theme: Theme;
-  unitMode: UnitMode;
+  format: FormatSettings;
 };
 
 export function createNote(id: string, now: string, title = "未命名笔记", body = ""): Note {
@@ -52,7 +52,13 @@ const examples = [
 
 export function createWorkspace(now: string, makeId: () => string): Workspace {
   const notes = examples.map((example) => createNote(makeId(), now, example.title, example.body));
-  return { version: 1, notes, activeId: notes[0].id, theme: "paper", unitMode: DEFAULT_UNIT_MODE };
+  return {
+    version: 1,
+    notes,
+    activeId: notes[0].id,
+    theme: "paper",
+    format: DEFAULT_FORMAT_SETTINGS,
+  };
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -66,8 +72,16 @@ export function parseWorkspace(input: unknown): Workspace {
     throw new Error("笔记列表无效或超过 100 篇。");
   const theme = LEGACY_THEMES[input.theme as string] ?? input.theme;
   if (!THEME_IDS.includes(theme as Theme)) throw new Error("笔记主题配置无效。");
-  // 旧数据没有 unitMode：默认自由单位。旧工作区的 calculatorMode 字段已废弃：读取时忽略。
-  const unitMode = input.unitMode === undefined ? DEFAULT_UNIT_MODE : parseUnitMode(input.unitMode);
+  // 旧数据没有 format：按默认格式设置；更早的 unitMode 迁移到「单位使用」。
+  // calculatorMode 字段已废弃，读取时忽略。
+  const format =
+    input.format === undefined
+      ? {
+          ...DEFAULT_FORMAT_SETTINGS,
+          ...(input.unitMode === "chinese" ? { unitStyle: "chinese" as const } : {}),
+          ...(input.unitMode === "english" ? { unitStyle: "lower" as const } : {}),
+        }
+      : parseFormatSettings(input.format);
   const ids = new Set<string>();
   const notes = input.notes.map((note): Note => {
     const filename = record(note) && note.filename !== undefined ? note.filename : "";
@@ -106,5 +120,5 @@ export function parseWorkspace(input: unknown): Workspace {
   if (input.activeId !== null && (typeof input.activeId !== "string" || !ids.has(input.activeId))) {
     throw new Error("当前笔记引用无效，原数据已保留。");
   }
-  return { version: 1, notes, activeId: input.activeId, theme: theme as Theme, unitMode };
+  return { version: 1, notes, activeId: input.activeId, theme: theme as Theme, format };
 }

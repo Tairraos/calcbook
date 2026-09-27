@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { DEFAULT_FORMAT_SETTINGS } from "../src/domain/formatting.ts";
 import { createWorkspace, MAX_NOTE_LENGTH, parseWorkspace } from "../src/domain/notebook.ts";
 
 test("workspace round trip preserves notes, theme and trash", () => {
@@ -65,13 +66,21 @@ test("note filenames stay inside the data directory", () => {
     );
   }
 });
-test("unit mode persists and rejects unknown values", () => {
+test("format settings persist, migrate unitMode and reject unknown values", () => {
   const workspace = createWorkspace(new Date().toISOString(), () => crypto.randomUUID());
-  workspace.unitMode = "chinese";
-  assert.equal(parseWorkspace(JSON.parse(JSON.stringify(workspace))).unitMode, "chinese");
-  // 旧数据没有 unitMode：默认自由单位。
+  workspace.format = { ...workspace.format, unitStyle: "chinese" };
+  assert.equal(parseWorkspace(JSON.parse(JSON.stringify(workspace))).format.unitStyle, "chinese");
+  // 旧数据没有 format：unitMode 迁移到单位风格，其余默认。
   const legacy = JSON.parse(JSON.stringify(workspace));
+  delete legacy.format;
+  legacy.unitMode = "english";
+  assert.equal(parseWorkspace(legacy).format.unitStyle, "lower");
   delete legacy.unitMode;
-  assert.equal(parseWorkspace(legacy).unitMode, "free");
-  assert.throws(() => parseWorkspace({ ...workspace, unitMode: "traditional" }));
+  assert.deepEqual(parseWorkspace(legacy).format, DEFAULT_FORMAT_SETTINGS);
+  // 非法单位风格在 TS 侧宽松回落默认，Rust 侧严格校验拒绝写入。
+  assert.equal(
+    parseWorkspace({ ...workspace, format: { ...workspace.format, unitStyle: "traditional" } })
+      .format.unitStyle,
+    "free",
+  );
 });

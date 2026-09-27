@@ -20,8 +20,10 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { evaluateNotebook } from "./domain/calculation.ts";
+import { convertUnitQuantity, evaluateNotebook } from "./domain/calculation.ts";
 import { parseNoteBody } from "./domain/format.ts";
+import type { FormatSettings } from "./domain/formatting.ts";
+import { formatNoteBody } from "./domain/formatting.ts";
 import {
   createNote,
   MAX_NOTE_LENGTH,
@@ -29,7 +31,6 @@ import {
   MAX_TITLE_LENGTH,
   type Note,
 } from "./domain/notebook.ts";
-import { rewriteLineUnits, type UnitMode } from "./domain/units.ts";
 import {
   CALCULATOR_INSERT_EVENT,
   CALCULATOR_READY_EVENT,
@@ -45,6 +46,7 @@ import {
   toggleCalculator,
 } from "./platform/storage.ts";
 import { Editor } from "./ui/Editor.tsx";
+import { FormatDialog } from "./ui/FormatDialog.tsx";
 import { HelpDialog } from "./ui/HelpDialog.tsx";
 import { IconButton } from "./ui/IconButton.tsx";
 import { SettingsDialog } from "./ui/SettingsDialog.tsx";
@@ -218,84 +220,34 @@ export default function App() {
     }
   }
 
-  // 光标离开刚算完的一行时，按单位模式改写该行写法；只处理这一行，不重排整篇。
-  const rewriteLeftLine = useCallback(
-    (line: number) => {
-      if (!selected || !workspace || line < 0) return;
-      if (results[line]?.kind !== "result") return;
-      const lines = selected.body.split("\n");
-      const rewritten = rewriteLineUnits(lines[line] ?? "", workspace.unitMode);
-      if (rewritten === null || rewritten === lines[line]) return;
-      const textarea = editorRef.current;
-      const caretLine = activeLineRef.current;
-      const selection =
-        textarea && textarea.selectionStart === textarea.selectionEnd
-          ? ([textarea.selectionStart, textarea.selectionEnd] as const)
-          : null;
-      const delta = rewritten.length - (lines[line]?.length ?? 0);
-      // 编辑器仍持有焦点时用 execCommand 走原生编辑路径，保住浏览器撤销栈；
-      // 失焦（点击计算器、设置等）时 execCommand 不可用，退回整值替换。
-      if (textarea && selection && document.activeElement === textarea) {
-        const start = lines.slice(0, line).reduce((sum, item) => sum + item.length + 1, 0);
-        try {
-          textarea.setSelectionRange(start, start + lines[line].length);
-          if (document.execCommand("insertText", false, rewritten)) {
-            textarea.setSelectionRange(
-              selection[0] + (line < caretLine ? delta : 0),
-              selection[1] + (line < caretLine ? delta : 0),
-            );
-            return;
-          }
-          textarea.setSelectionRange(selection[0], selection[1]);
-        } catch {
-          textarea.setSelectionRange(selection[0], selection[1]);
-        }
-      }
-      update((before) => ({
-        ...before,
-        notes: before.notes.map((note) =>
-          note.id === selected.id
-            ? {
-                ...note,
-                body: lines.map((item, index) => (index === line ? rewritten : item)).join("\n"),
-                updatedAt: new Date().toISOString(),
-              }
-            : note,
-        ),
-      }));
-      // 程序化改写会把光标推到结尾；把它放回原处（改写行在光标前时按长度差平移）。
-      if (textarea && selection) {
-        const shift = line < caretLine ? delta : 0;
-        requestAnimationFrame(() =>
-          textarea.setSelectionRange(selection[0] + shift, selection[1] + shift),
-        );
-      }
-    },
-    [selected, results, workspace, update],
-  );
+  const handleActiveLine = useCallback((line: number) => {
+    activeLineRef.current = line;
+    setActiveLine(line);
+  }, []);
 
-  const handleActiveLine = useCallback(
-    (line: number) => {
-      const previous = activeLineRef.current;
-      activeLineRef.current = line;
-      setActiveLine(line);
-      const textarea = editorRef.current;
-      if (line !== previous && textarea && textarea.selectionStart === textarea.selectionEnd)
-        rewriteLeftLine(previous);
-    },
-    [rewriteLeftLine],
-  );
-
-  const handleEditorBlur = useCallback(() => {
-    const textarea = editorRef.current;
-    if (textarea && textarea.selectionStart === textarea.selectionEnd)
-      rewriteLeftLine(activeLineRef.current);
-  }, [rewriteLeftLine]);
-
-  const changeUnitMode = useCallback(
-    (mode: UnitMode) => update((before) => ({ ...before, unitMode: mode })),
+  const [formatOpen, setFormatOpen] = useState(false);
+  const changeFormat = useCallback(
+    (format: FormatSettings) => update((before) => ({ ...before, format })),
     [update],
   );
+  // 格式化整篇：按当前格式设置重排所有行（含注释与空格规范）。
+  const applyFormatting = useCallback(() => {
+    if (!selected || !workspace) return;
+    const formatted = formatNoteBody(selected.body, workspace.format, convertUnitQuantity);
+    if (formatted === selected.body) {
+      setNotice("格式已是最新的。");
+      return;
+    }
+    update((before) => ({
+      ...before,
+      notes: before.notes.map((note) =>
+        note.id === selected.id
+          ? { ...note, body: formatted, updatedAt: new Date().toISOString() }
+          : note,
+      ),
+    }));
+    setNotice("已按格式设置整理本页算式");
+  }, [selected, workspace, update]);
 
   // 计算器子窗口状态：初始查询一次，之后由 Rust 在显示/隐藏时推送。
   // 桌面版主题存在文件系统而非 localStorage，子窗打开时需立即同步当前配色。
@@ -520,16 +472,31 @@ export default function App() {
             <strong>{selected?.title || "新的一页"}</strong>
           </div>
           <div className="topbar-actions">
-            <span className={`save-status ${status === "error" ? "save-error" : ""}`} role="status">
-              {status === "saved" && <Check size={13} />}
-              {status === "saved"
-                ? "已保存"
-                : status === "saving"
-                  ? "保存中…"
-                  : status === "error"
-                    ? "尚未保存"
-                    : "读取中…"}
-            </span>
+            {status === "error" ? (
+              <span className="save-status save-error" role="alert">
+                尚未保存
+              </span>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="topbar-tool"
+                  aria-haspopup="dialog"
+                  title="算式书写格式设置"
+                  onClick={() => setFormatOpen(true)}
+                >
+                  格式
+                </button>
+                <button
+                  type="button"
+                  className="topbar-tool"
+                  title="按格式设置整理当前笔记的全部算式"
+                  onClick={applyFormatting}
+                >
+                  格式化
+                </button>
+              </>
+            )}
             <button
               type="button"
               className={`calculator-toggle ${calculatorVisible ? "is-open" : ""}`}
@@ -635,7 +602,6 @@ export default function App() {
               onCopy={(text) => void copy(text)}
               activeLine={activeLine}
               onActiveLine={handleActiveLine}
-              onBlurEditor={handleEditorBlur}
               editorRef={editorRef}
               readOnly={selected.trashed}
             />
@@ -665,13 +631,22 @@ export default function App() {
         )}
       </main>
       {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} onInsert={insertExpression} />}
+      {formatOpen && workspace && (
+        <FormatDialog
+          settings={workspace.format}
+          onChange={changeFormat}
+          onApply={() => {
+            applyFormatting();
+            setFormatOpen(false);
+          }}
+          onClose={() => setFormatOpen(false)}
+        />
+      )}
       {settingsOpen && storage && (
         <SettingsDialog
           directory={storage.directory}
           defaultDirectory={storage.defaultDirectory}
           canChooseDirectory={storage.canChoose}
-          unitMode={workspace?.unitMode ?? "free"}
-          onChangeUnitMode={changeUnitMode}
           version={__APP_VERSION__}
           buildTime={__BUILD_TIME__}
           githubUrl={__GITHUB_URL__}

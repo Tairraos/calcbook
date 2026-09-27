@@ -1,4 +1,4 @@
-import { isUnit } from "mathjs";
+import { isUnit, Unit } from "mathjs";
 
 // 单位模式：free 允许整篇混用（但同一行内中英文单位混用时统一成中文，公制英制混用时结果并入公制）；
 // chinese/english 在光标离开刚算完的行时，把该行单位改写成对应语言。
@@ -59,7 +59,7 @@ export const UNITS: Entry[] = [
   { en: "ml", zh: "毫升", aliases: ["milliliter", "milliliters"] },
   { en: "cl", zh: "厘升" },
   { en: "dl", zh: "分升" },
-  { en: "l", zh: "升", aliases: ["L", "ml", "liter", "liters", "litre", "litres", "公升"] },
+  { en: "l", zh: "升", aliases: ["L", "liter", "liters", "litre", "litres", "公升"] },
   { en: "m3", zh: "立方米", aliases: ["cubicmeter", "cubicmeters"] },
   { en: "shi", zh: "石", aliases: ["市石"] },
   { en: "cm3", zh: "立方厘米", aliases: ["cc", "cubiccentimeter", "cubiccentimeters"] },
@@ -163,6 +163,16 @@ export const UNITS: Entry[] = [
 
 // mathjs 拒绝非字母开头的单位名，中文一律经由别名表在解析前替换成英文单位。
 let customUnitsRegistered = false;
+// calculation.ts 初始化时注入 math 实例的 Unit 能力（自定义单位注册后才有 jin/shi 等）。
+let mathUnit: { isValidToken: (name: string) => boolean } = {
+  isValidToken: () => false,
+};
+
+export function attachMath(mathInstance: {
+  Unit: { isValuelessUnit: (name: string) => boolean };
+}): void {
+  mathUnit = { isValidToken: (name) => mathInstance.Unit.isValuelessUnit(name) };
+}
 
 export function registerCustomUnits(math: {
   createUnit: (name: string, options: Record<string, unknown>) => unknown;
@@ -187,14 +197,15 @@ const isChinese = (text: string) => /\p{Script=Han}/u.test(text);
 
 // 解析用别名表：中文与英文变体都指向 mathjs 可解析的写法。
 export const parseUnitAliases: Record<string, string> = {};
-// 英文写法 → 中文规范名（中文模式改写用）。
-const enToZh: Record<string, string> = {};
+// 英文写法 → 中文规范名（中文模式改写与结果呈现用）。
+export const enToZh: Record<string, string> = {};
 // 中文写法 → 英文规范写法（解析与英文模式改写用）。
 const zhToEn: Record<string, string> = {};
 // 中文写法 → 中文规范名（自由模式混用时统一写法，如 千米 → 公里）。
-const zhToCanonical: Record<string, string> = {};
+export const zhToCanonical: Record<string, string> = {};
 for (const entry of UNITS) {
   // 首见优先：同一别名重复登记时不覆盖先前的映射（如 l 的别名 ml 不得顶掉毫升）。
+  if (!(entry.en in parseUnitAliases)) parseUnitAliases[entry.en] = entry.en;
   if (!(entry.zh in parseUnitAliases)) parseUnitAliases[entry.zh] = entry.en;
   if (!(entry.zh in zhToEn)) zhToEn[entry.zh] = entry.en;
   if (!(entry.en in enToZh)) enToZh[entry.en] = entry.zh;
@@ -209,7 +220,6 @@ for (const entry of UNITS) {
     }
   }
 }
-
 
 // 大小写兼容：输入 `5 KM` `1500MG` `2 ML` 与小写等价，输出统一小写缩写。
 // 表：小写形式 → 规范写法（输出用小写，重解析经此表还原）。
@@ -230,8 +240,20 @@ export const caseUnitAliases: Record<string, string> = (() => {
     for (const prefix of prefixes) tokens.add(prefix + base);
   }
   const overrides: Record<string, string> = {
-    b: "B", s: "s", t: "t", m: "m", a: "A", n: "N", w: "W", v: "V",
-    j: "J", k: "K", d: "d", h: "h", g: "g", l: "l",
+    b: "B",
+    s: "s",
+    t: "t",
+    m: "m",
+    a: "A",
+    n: "N",
+    w: "W",
+    v: "V",
+    j: "J",
+    k: "K",
+    d: "d",
+    h: "h",
+    g: "g",
+    l: "l",
   };
   const map: Record<string, string> = {};
   // 小写原形（mg、km2）先占位；生成组合（Mg、Mm2）的小写已被占位时跳过。
@@ -253,8 +275,156 @@ export function isKnownUnitLower(lower: string): boolean {
   return caseUnitAliases[lower] !== undefined || parseUnitAliases[lower] !== undefined;
 }
 
-const zhTokens = new Set(Object.keys(zhToEn));
-const enTokens = new Set(Object.keys(enToZh));
+// 各制式的兜底换算目标：目标制式里没有同行同量纲单位时使用。
+export const TO_METRIC: Record<string, string> = {
+  mile: "km",
+  mi: "km",
+  foot: "m",
+  feet: "ft",
+  ft: "m",
+  inch: "cm",
+  inches: "cm",
+  yard: "m",
+  yards: "m",
+  yd: "m",
+  nmi: "km",
+  gallon: "l",
+  gallons: "gal",
+  gal: "l",
+  quart: "l",
+  qt: "l",
+  pint: "l",
+  pt: "l",
+  cup: "l",
+  floz: "ml",
+  tablespoon: "ml",
+  tbsp: "ml",
+  teaspoon: "ml",
+  tsp: "ml",
+  acre: "m2",
+  sqft: "m2",
+  sqin: "cm2",
+  lb: "g",
+  lbs: "g",
+  oz: "g",
+  stone: "kg",
+  ton: "kg",
+  psi: "kPa",
+  hp: "kW",
+  btu: "kJ",
+  BTU: "kJ",
+  degF: "degC",
+  fahrenheit: "degC",
+  knot: "km/hour",
+  jin: "g",
+  dan: "kg",
+  liang: "g",
+  qian: "g",
+  shili: "m",
+  shi: "l",
+  mu: "m2",
+};
+export const TO_IMPERIAL: Record<string, string> = {
+  km: "mile",
+  m: "ft",
+  cm: "in",
+  mm: "in",
+  g: "oz",
+  kg: "lb",
+  mg: "oz",
+  l: "gal",
+  ml: "floz",
+  m2: "sqft",
+  m3: "cuft",
+  hectare: "acre",
+  mu: "acre",
+  degC: "degF",
+  celsius: "degF",
+  jin: "lb",
+  dan: "lb",
+  liang: "oz",
+  qian: "oz",
+  shili: "mile",
+  shi: "gal",
+};
+export const TO_MARKET: Record<string, string> = {
+  km: "shili",
+  m: "shili",
+  g: "liang",
+  kg: "jin",
+  mg: "qian",
+  l: "shi",
+  ml: "shi",
+  m2: "mu",
+  hectare: "mu",
+  jin: "jin",
+  lb: "jin",
+  oz: "liang",
+  dan: "dan",
+};
+
+// 源文本里的单位 token：语言（中文/大写/小写）、制式与量级，供引擎决定结果的单位与语言。
+export type SeenUnit = {
+  token: string; // 规范英文写法
+  chinese: boolean;
+  upper: boolean;
+  kind: UnitSystemKind;
+  mag: number; // 单个该单位折合基准单位的大小
+};
+
+const unitMagCache = new Map<string, number>();
+
+export function unitMagnitude(token: string): number {
+  const cached = unitMagCache.get(token);
+  if (cached !== undefined) return cached;
+  let mag = 1;
+  try {
+    mag = Number(new Unit(1, token).value ?? 1) || 1;
+  } catch {
+    mag = 1;
+  }
+  unitMagCache.set(token, mag);
+  return mag;
+}
+
+// 用户写法 → 可计算的单位 token：中文走对照表；大小写不敏感地落到已知写法；
+// mathjs 原生认识的原样保留（ml 不会被并到 l，量级得以保留）。
+export function resolveUnitToken(word: string): { token: string; chinese: boolean } | null {
+  if (zhToEn[word]) return { token: zhToEn[word], chinese: true };
+  const lower = word.toLowerCase();
+  if (parseUnitAliases[lower]) return { token: parseUnitAliases[lower], chinese: false };
+  if (mathUnit.isValidToken(lower)) return { token: lower, chinese: false };
+  if (caseUnitAliases[lower]) return { token: caseUnitAliases[lower], chinese: false };
+  if (parseUnitAliases[word]) return { token: parseUnitAliases[word], chinese: false };
+  if (mathUnit.isValidToken(word)) return { token: word, chinese: false };
+  return null;
+}
+
+export function scanUnitTokens(source: string): SeenUnit[] {
+  const seen = new Map<string, SeenUnit>();
+  for (const match of source.matchAll(/\p{L}[\p{L}\p{N}_]*/gu)) {
+    const word = match[0];
+    const resolved = resolveUnitToken(word);
+    if (!resolved || resolved.token.includes("/")) continue;
+    const { token, chinese } = resolved;
+    const upper = !chinese && /[A-Z]/.test(word) && word === word.toUpperCase();
+    const key = token.toLowerCase();
+    const existing = seen.get(key);
+    if (existing) {
+      existing.chinese ||= chinese;
+      existing.upper ||= upper;
+      continue;
+    }
+    seen.set(key, {
+      token,
+      chinese,
+      upper,
+      kind: unitKind(token),
+      mag: unitMagnitude(token),
+    });
+  }
+  return [...seen.values()];
+}
 
 // 英制单位集合与换算目标；混合公制英制时把英制分量换算过去。
 const IMPERIAL = new Set(
@@ -467,7 +637,13 @@ const NEUTRAL = new Set([
   "arcseconds",
 ]);
 
-export function unitKind(name: string): "imperial" | "metric" | "neutral" | "none" {
+// 市制单位（含自定义的斤两钱担里亩石）。
+const MARKET = new Set(["jin", "dan", "liang", "qian", "shili", "shi", "mu"]);
+
+export type UnitSystemKind = "imperial" | "metric" | "market" | "neutral" | "none";
+
+export function unitKind(name: string): UnitSystemKind {
+  if (MARKET.has(name)) return "market";
   if (IMPERIAL.has(name)) return "imperial";
   if (NEUTRAL.has(name)) return "neutral";
   return "metric";
@@ -574,52 +750,4 @@ export function preferMetric(
   } catch {
     return { value, converted: false };
   }
-}
-
-const WORD = /[\p{L}_][\p{L}\p{N}_]*/gu;
-
-function rewriteText(text: string, target: "zh" | "en"): string {
-  return text.replace(WORD, (word, offset: number) => {
-    const replacement = target === "zh" ? (enToZh[word] ?? word) : (zhToEn[word] ?? word);
-    // 英文写法在数字或中文后面补一个空格（4毫升 → 4 ml）；中文写法直接贴合（100L → 100升）。
-    if (target === "en" && replacement !== word) {
-      const before = offset > 0 ? text[offset - 1] : "";
-      if (/[\p{N}\p{Script=Han}]/u.test(before) && before !== " ") return ` ${replacement}`;
-    }
-    return replacement;
-  });
-}
-
-// 同一行内是否同时出现中英文单位（自由模式据此把整行统一成中文）。
-export function mixesUnitLanguages(line: string): boolean {
-  let zh = false;
-  let en = false;
-  for (const match of line.matchAll(WORD)) {
-    if (zhTokens.has(match[0])) zh = true;
-    else if (enTokens.has(match[0])) en = true;
-  }
-  return zh && en;
-}
-
-// 光标离开一行时调用：按模式改写该行算式里的单位，无需改写时返回 null。
-export function rewriteLineUnits(line: string, mode: UnitMode): string | null {
-  const trimmed = line.trim();
-  if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("//")) return null;
-  const target = mode === "chinese" ? "zh" : mode === "english" ? "en" : null;
-  if (target) return applyRewrite(line, target);
-  return mixesUnitLanguages(line) ? applyRewrite(line, "zh") : null;
-}
-
-function applyRewrite(line: string, target: "zh" | "en"): string | null {
-  const comment = line.indexOf("//");
-  const body = comment === -1 ? line : line.slice(0, comment);
-  const tail = comment === -1 ? "" : line.slice(comment);
-  // 「说明: 算式」只改写冒号后的算式；冒号前是纯数字时是比率（16:9），整行都算算式。
-  const label = body.search(/[:：]/);
-  const hasLabel =
-    label >= 0 && !/^-?\d+(?:\.\d+)?$/.test(body.slice(0, label).trim()) ? label : -1;
-  const head = hasLabel === -1 ? "" : body.slice(0, hasLabel + 1);
-  const expression = hasLabel === -1 ? body : body.slice(hasLabel + 1);
-  const rewritten = head + rewriteText(expression, target) + tail;
-  return rewritten === line ? null : rewritten;
 }
