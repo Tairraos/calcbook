@@ -8,6 +8,7 @@ import {
   ChevronRight,
   CircleHelp,
   FileText,
+  FolderOpen,
   Menu,
   Moon,
   PanelLeftClose,
@@ -43,8 +44,10 @@ import {
   importNoteFile,
   isDesktopApp,
   openProject,
+  revealNoteFile,
   toggleCalculator,
 } from "./platform/storage.ts";
+import { Dialog } from "./ui/Dialog.tsx";
 import { Editor } from "./ui/Editor.tsx";
 import { FormatDialog } from "./ui/FormatDialog.tsx";
 import { HelpDialog } from "./ui/HelpDialog.tsx";
@@ -239,6 +242,15 @@ export default function App() {
   const formatUndoRef = useRef<{ noteId: string; previous: string; formatted: string } | null>(
     null,
   );
+  const [noteMenu, setNoteMenu] = useState<{
+    noteId: string;
+    title: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<
+    { mode: "all"; count: number } | { mode: "one"; noteId: string; title: string } | null
+  >(null);
   const changeFormat = useCallback(
     (format: FormatSettings) => update((before) => ({ ...before, format })),
     [update],
@@ -278,6 +290,57 @@ export default function App() {
     }));
     setNotice("已按格式设置整理本页算式");
   }, [selected, workspace, update]);
+
+  // 右键菜单：定位（Finder）/导出/删除到废纸篓
+  const closeNoteMenu = useCallback(() => setNoteMenu(null), []);
+  const revealNote = useCallback(async (noteId: string) => {
+    try {
+      await revealNoteFile(noteId);
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : String(reason));
+    }
+  }, []);
+  const exportNoteById = useCallback(
+    async (noteId: string, title: string) => {
+      const note = workspace?.notes.find((item) => item.id === noteId);
+      if (!note) return;
+      try {
+        if (await downloadText(`${title || "未命名笔记"}.txt`, serializeNoteBody(note.body)))
+          setNotice("已导出文本笔记（含结果）");
+      } catch {
+        setNotice("导出失败，请重试。");
+      }
+    },
+    [workspace],
+  );
+  const trashNote = useCallback(
+    (noteId: string) => {
+      update((before) => ({
+        ...before,
+        notes: before.notes.map((note) =>
+          note.id === noteId
+            ? { ...note, trashed: true, updatedAt: new Date().toISOString() }
+            : note,
+        ),
+        activeId: before.activeId === noteId ? null : before.activeId,
+      }));
+      setNotice("已移到废纸篓");
+    },
+    [update],
+  );
+  // 永久删除：从工作区移除；Rust 保存时按新旧元数据差异物理删除对应 .txt 文件。
+  const permanentDelete = useCallback(
+    (noteIds: string[]) => {
+      const idSet = new Set(noteIds);
+      update((before) => ({
+        ...before,
+        notes: before.notes.filter((note) => !idSet.has(note.id)),
+        activeId: before.activeId && idSet.has(before.activeId) ? null : before.activeId,
+      }));
+      setNotice(noteIds.length === 1 ? "笔记已永久删除" : `已永久删除 ${noteIds.length} 篇笔记`);
+    },
+    [update],
+  );
 
   // 计算器子窗口状态：初始查询一次，之后由 Rust 在显示/隐藏时推送。
   // 桌面版主题存在文件系统而非 localStorage，子窗打开时需立即同步当前配色。
@@ -421,9 +484,23 @@ export default function App() {
           </div>
           <div className="notebook-list-heading">
             <span>{trashView ? "废纸篓" : "我的笔记"}</span>
-            <IconButton title="新建笔记" onClick={() => newNote()}>
-              <Plus size={17} />
-            </IconButton>
+            {trashView ? (
+              <IconButton
+                title="永久删除废纸篓里的全部笔记"
+                onClick={() =>
+                  setConfirmDelete({
+                    mode: "all",
+                    count: notes.filter((note) => note.trashed).length,
+                  })
+                }
+              >
+                <Trash2 size={17} />
+              </IconButton>
+            ) : (
+              <IconButton title="新建笔记" onClick={() => newNote()}>
+                <Plus size={17} />
+              </IconButton>
+            )}
           </div>
           <div className="note-list">
             {visibleNotes.map((note) => (
@@ -432,10 +509,20 @@ export default function App() {
                 key={note.id}
                 className={`note-card ${selected?.id === note.id ? "is-selected" : ""}`}
                 aria-current={selected?.id === note.id ? "page" : undefined}
+                aria-haspopup="menu"
                 onClick={() => {
                   update((before) => ({ ...before, activeId: note.id }));
                   resetActiveLine();
                   if (window.innerWidth <= 760) setSidebarOpen(false);
+                }}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  setNoteMenu({
+                    noteId: note.id,
+                    title: note.title,
+                    x: event.clientX,
+                    y: event.clientY,
+                  });
                 }}
               >
                 <span className="note-card-top">
@@ -604,9 +691,23 @@ export default function App() {
                     <ArrowDownToLine size={16} />
                   </IconButton>
                   {selected.trashed ? (
-                    <IconButton title="恢复笔记" onClick={restoreNote}>
-                      <Undo2 size={16} />
-                    </IconButton>
+                    <>
+                      <IconButton title="恢复笔记" onClick={restoreNote}>
+                        <Undo2 size={16} />
+                      </IconButton>
+                      <IconButton
+                        title="永久删除这篇笔记"
+                        onClick={() =>
+                          setConfirmDelete({
+                            mode: "one",
+                            noteId: selected.id,
+                            title: selected.title,
+                          })
+                        }
+                      >
+                        <Trash2 size={16} />
+                      </IconButton>
+                    </>
                   ) : (
                     <IconButton
                       title="移到废纸篓"
@@ -694,6 +795,85 @@ export default function App() {
         )}
       </main>
       {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} onInsert={insertExpression} />}
+      {noteMenu && (
+        <div
+          className="context-menu"
+          role="menu"
+          aria-label="笔记操作"
+          style={{ left: noteMenu.x, top: noteMenu.y }}
+          onContextMenu={(event) => event.preventDefault()}
+        >
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              void revealNote(noteMenu.noteId);
+              closeNoteMenu();
+            }}
+          >
+            <FolderOpen size={14} />
+            定位
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={() => {
+              void exportNoteById(noteMenu.noteId, noteMenu.title);
+              closeNoteMenu();
+            }}
+          >
+            <ArrowDownToLine size={14} />
+            导出
+          </button>
+          <button
+            type="button"
+            role="menuitem"
+            className="context-menu-danger"
+            onClick={() => {
+              trashNote(noteMenu.noteId);
+              closeNoteMenu();
+            }}
+          >
+            <Trash2 size={14} />
+            删除
+          </button>
+        </div>
+      )}
+      {confirmDelete && (
+        <Dialog
+          className="confirm-dialog"
+          label="永久删除确认"
+          onClose={() => setConfirmDelete(null)}
+        >
+          <div className="settings-heading">
+            <div>
+              <h2>永久删除</h2>
+              <p>
+                {confirmDelete.mode === "all"
+                  ? `将永久删除废纸篓里的 ${confirmDelete.count} 篇笔记及其文件，无法恢复。`
+                  : `将永久删除「${confirmDelete.title || "未命名笔记"}」及其文件，无法恢复。`}
+              </p>
+            </div>
+          </div>
+          <div className="settings-footer">
+            <span role="note">对应的 .txt 文件也会一并删除。</span>
+            <button
+              type="button"
+              className="primary-button danger-button"
+              onClick={() => {
+                permanentDelete(
+                  confirmDelete.mode === "all"
+                    ? notes.filter((note) => note.trashed).map((note) => note.id)
+                    : [confirmDelete.noteId],
+                );
+                setConfirmDelete(null);
+              }}
+            >
+              永久删除
+            </button>
+          </div>
+        </Dialog>
+      )}
       {formatOpen && workspace && (
         <FormatDialog
           settings={workspace.format}

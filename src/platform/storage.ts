@@ -30,6 +30,12 @@ export async function calculatorStatus(): Promise<CalculatorStatus> {
   return invoke("calculator_state");
 }
 
+// 在系统文件管理器里显示笔记所在文件（桌面版）。
+export async function revealNoteFile(noteId: string): Promise<void> {
+  if (!isTauri()) throw new Error("定位文件仅在桌面版可用。");
+  await invoke("reveal_note", { noteId });
+}
+
 export async function hideCalculatorWindow(): Promise<void> {
   if (!isTauri()) return;
   await invoke("hide_calculator");

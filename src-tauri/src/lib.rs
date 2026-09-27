@@ -139,6 +139,24 @@ struct CalculatorStatus {
 }
 
 #[tauri::command]
+fn reveal_note(
+    app: tauri::AppHandle,
+    lock: tauri::State<StoreLock>,
+    note_id: String,
+) -> Result<(), String> {
+    let _guard = lock.0.lock().map_err(|_| "笔记存储忙，请重启应用")?;
+    let store = store(&app)?;
+    let directory = store.directory()?;
+    // 文件名来自 Rust 自己落盘的元数据（slugify 生成、落盘前校验），不接受前端路径。
+    let payload = storage::load(&directory)?.ok_or("笔记尚未保存到磁盘")?;
+    let filename = payload.filename_of(&note_id).ok_or("笔记尚未保存到磁盘")?;
+    let path = directory.join(filename);
+    app.opener()
+        .reveal_item_in_dir(&path)
+        .map_err(|error| format!("无法在访达中显示：{error}"))
+}
+
+#[tauri::command]
 fn open_project(app: tauri::AppHandle) -> Result<(), String> {
     app.opener()
         .open_url("https://github.com/Tairraos/calcbook", None::<&str>)
@@ -204,6 +222,7 @@ pub fn run() {
             toggle_calculator,
             hide_calculator,
             calculator_state,
+            reveal_note,
             storage_info,
             choose_storage_directory,
             open_project

@@ -234,6 +234,17 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     fs::rename(&temporary, path).map_err(|error| format!("替换文件失败：{error}"))
 }
 
+impl Payload {
+    /// 按 id 查找笔记的落盘文件名（元数据里的文件名已过 slugify 与落盘校验）。
+    pub fn filename_of(&self, note_id: &str) -> Option<&str> {
+        self.notes
+            .iter()
+            .find(|note| note.id == note_id)
+            .map(|note| note.filename.as_str())
+            .filter(|name| !name.is_empty())
+    }
+}
+
 fn meta_from(payload: &Payload) -> Meta {
     Meta {
         version: payload.version,
