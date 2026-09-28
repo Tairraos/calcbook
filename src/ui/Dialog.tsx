@@ -15,6 +15,8 @@ export function Dialog({
   useEffect(() => {
     const dialog = ref.current;
     dialog?.showModal();
+    // 焦点落在弹窗容器上，而不是第一个可聚焦元素（关闭按钮）。
+    dialog?.focus();
     return () => dialog?.close();
   }, []);
   return (

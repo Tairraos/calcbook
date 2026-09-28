@@ -77,7 +77,9 @@ const currencySymbols: Record<string, string> = {
   "£": "GBP",
 };
 
-function normalizeMultiplication(expression: string): string {
+// 把字母 x 在「两个操作数之间」时判为乘号（返回 * 的写法）。
+// 引擎与全文格式化共用这一判定，保证格式化不改写算式语义。
+export function normalizeMultiplication(expression: string): string {
   let normalized = "";
   for (let index = 0; index < expression.length; index++) {
     const character = expression[index];

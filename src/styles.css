@@ -463,6 +463,8 @@ kbd {
 .save-error {
   color: var(--error);
 }
+/* 顶栏文字工具按钮（格式化 / 计算器）共用同一种观感 */
+.topbar-tool,
 .calculator-toggle {
   display: flex;
   align-items: center;
@@ -473,6 +475,7 @@ kbd {
   color: var(--muted);
   border: 1px solid transparent;
 }
+.topbar-tool:hover,
 .calculator-toggle:hover {
   background: var(--hover);
   color: var(--ink);
@@ -569,6 +572,35 @@ kbd {
   font-size: 11px;
   letter-spacing: 0.7px;
   background: var(--paper);
+}
+.editor-columns-title,
+.quick-insert {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.editor-columns-title {
+  min-width: 0;
+  gap: 10px;
+}
+.quick-insert-key {
+  width: 19px;
+  height: 19px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--key);
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: 0;
+}
+.quick-insert-key:hover {
+  background: var(--hover);
+  border-color: var(--strong-border);
+  color: var(--green);
 }
 .editor-grid {
   --editor-line-height: 23px;
@@ -1159,6 +1191,10 @@ kbd {
   background: #00000066;
   backdrop-filter: blur(3px);
 }
+/* 焦点停在弹窗容器上时不再叠加轮廓，内部控件仍有可见焦点 */
+.dialog:focus {
+  outline: none;
+}
 .help-dialog {
   width: 650px;
   height: 565px;
@@ -1169,7 +1205,18 @@ kbd {
 }
 .settings-dialog {
   width: 580px;
+  max-height: 565px;
   padding: 24px 28px 20px;
+  display: flex;
+  flex-direction: column;
+}
+/* 标题与底部固定，内容超出 565px 时在中间滚动 */
+.settings-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: var(--strong-border) transparent;
 }
 .settings-heading {
   display: flex;
@@ -1357,6 +1404,72 @@ fieldset.settings-section {
   flex-shrink: 0;
   padding: 8px 21px;
   font-size: 12px;
+}
+.format-lead {
+  margin: 0 0 10px;
+}
+.format-group-label {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.format-toggles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 2px 16px;
+}
+.format-radio-groups {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 10px;
+}
+.format-radio-col {
+  min-width: 0;
+}
+.format-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 0;
+  font-size: 12px;
+  cursor: pointer;
+}
+.format-option input {
+  margin: 2px 0 0;
+}
+.format-option span {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.format-option small {
+  color: var(--muted);
+}
+.format-radio-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.format-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.format-pill:has(input:checked) {
+  border-color: var(--strong-border);
+  background: var(--sage);
+  color: var(--green);
+}
+.format-pill input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
 }
 .help-heading {
   display: flex;
@@ -1684,6 +1797,12 @@ fieldset.settings-section {
   .settings-dialog {
     padding: 20px;
   }
+  .format-toggles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .format-radio-groups {
+    grid-template-columns: 1fr;
+  }
   .about-section {
     grid-template-columns: 1fr;
   }
@@ -1724,65 +1843,6 @@ fieldset.settings-section {
   .sidebar {
     transition: none;
   }
-}
-.topbar-tool {
-  padding: 5px 10px;
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  font-size: 12px;
-  color: var(--muted);
-}
-.topbar-tool:hover {
-  color: var(--ink);
-  background: var(--hover);
-}
-.format-dialog {
-  width: 560px;
-  padding: 24px 28px 20px;
-}
-.format-option {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  padding: 7px 0;
-  font-size: 12px;
-  cursor: pointer;
-}
-.format-option input {
-  margin: 2px 0 0;
-}
-.format-option span {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-}
-.format-option small {
-  color: var(--muted);
-}
-.format-radio-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.format-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 5px 10px;
-  border: 1px solid var(--border);
-  border-radius: 999px;
-  font-size: 12px;
-  cursor: pointer;
-}
-.format-pill:has(input:checked) {
-  border-color: var(--strong-border);
-  background: var(--sage);
-  color: var(--green);
-}
-.format-pill input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
 }
 .help-error-word {
   color: var(--error);

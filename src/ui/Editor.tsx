@@ -1,6 +1,6 @@
 // biome-ignore-all lint/suspicious/noArrayIndexKey: This stateless text mirror is keyed by line/token position to preserve the native textarea.
 import { Check, Copy, TriangleAlert } from "lucide-react";
-import { type RefObject, useState } from "react";
+import { type RefObject, useEffect, useState } from "react";
 import type { LineResult } from "../domain/calculation.ts";
 import { MAX_NOTE_LENGTH } from "../domain/notebook.ts";
 
@@ -60,11 +60,61 @@ export function Editor({
   const height = count * 34 + 32;
   const selectLine = (target: HTMLTextAreaElement) =>
     onActiveLine(target.value.slice(0, target.selectionStart).split("\n").length - 1);
+  // 便捷输入：插入的字符没有换行，行号不变；新值提交后再把光标落到插入点之后。
+  const [pendingCaret, setPendingCaret] = useState<number | null>(null);
+  useEffect(() => {
+    if (pendingCaret === null) return;
+    setPendingCaret(null);
+    const textarea = editorRef.current;
+    if (!textarea) return;
+    textarea.focus();
+    textarea.setSelectionRange(pendingCaret, pendingCaret);
+  }, [pendingCaret, editorRef]);
+  function insertSymbol(symbol: string) {
+    const textarea = editorRef.current;
+    if (!textarea || readOnly) return;
+    // 输入框有焦点（按钮按下时不抢焦点）就替换选中内容，否则追加到末尾。
+    const editing = document.activeElement === textarea;
+    const start = editing ? textarea.selectionStart : body.length;
+    const end = editing ? textarea.selectionEnd : body.length;
+    const next = body.slice(0, start) + symbol + body.slice(end);
+    if (next.length > MAX_NOTE_LENGTH) return;
+    setPendingCaret(start + symbol.length);
+    onChange(next);
+  }
   return (
     <div className="editor-scroll">
-      <div className="editor-columns-label" aria-hidden="true">
-        <span>笔记与算式</span>
-        <span>结果</span>
+      <div className="editor-columns-label">
+        <span className="editor-columns-title">
+          <span aria-hidden="true">笔记与算式</span>
+          {!readOnly && (
+            <span className="quick-insert">
+              <span aria-hidden="true">（便捷输入：</span>
+              <button
+                type="button"
+                className="quick-insert-key"
+                title="插入乘号 ×"
+                aria-label="插入乘号"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => insertSymbol("×")}
+              >
+                ×
+              </button>
+              <button
+                type="button"
+                className="quick-insert-key"
+                title="插入除号 ÷"
+                aria-label="插入除号"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => insertSymbol("÷")}
+              >
+                ÷
+              </button>
+              <span aria-hidden="true">）</span>
+            </span>
+          )}
+        </span>
+        <span aria-hidden="true">结果</span>
       </div>
       <div className="editor-grid" style={{ minHeight: height }}>
         <div className="line-numbers" aria-hidden="true">

@@ -1,5 +1,6 @@
 // 全文格式化：按用户的格式设置重排笔记里的算式写法。默认不自动执行，
 // 只在点击「格式化」时对整篇运行一次。
+import { normalizeMultiplication } from "./calculation.ts";
 import {
   enToZh,
   parseUnitAliases,
@@ -138,13 +139,19 @@ function isConversionWord(word: string): boolean {
   return ["to", "in", "into", "as", "TO", "IN", "INTO", "AS"].includes(word);
 }
 
+// 乘号统一写法：x（判定为乘法时）与 * 都排成 ×。除法的 ÷ 与 / 原样保留，
+// 因为 / 常用来表达分子/分母。
+function unifyMultiplication(expression: string): string {
+  return normalizeMultiplication(expression).replaceAll("*", "×");
+}
+
 // 单行算式格式化。label 由调用方处理；convert 由 calculation.ts 注入（需要 mathjs 实例）。
 export function formatExpression(
   expression: string,
   settings: FormatSettings,
   convert: ConvertQuantity,
 ): string {
-  let tokens = tokenize(expression);
+  let tokens = tokenize(unifyMultiplication(expression));
   const hasConversionWord = tokens.some(
     (token) => token.kind === "word" && isConversionWord(token.text),
   );

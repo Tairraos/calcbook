@@ -15,6 +15,7 @@ import {
   Plus,
   Search,
   Settings,
+  Sparkles,
   Sun,
   Trash2,
   Undo2,
@@ -52,7 +53,6 @@ import {
 } from "./platform/storage.ts";
 import { Dialog } from "./ui/Dialog.tsx";
 import { Editor } from "./ui/Editor.tsx";
-import { FormatDialog } from "./ui/FormatDialog.tsx";
 import { HelpDialog } from "./ui/HelpDialog.tsx";
 import { IconButton } from "./ui/IconButton.tsx";
 import { SettingsDialog } from "./ui/SettingsDialog.tsx";
@@ -262,7 +262,6 @@ export default function App() {
     setActiveLine(line);
   }, []);
 
-  const [formatOpen, setFormatOpen] = useState(false);
   const formatUndoRef = useRef<{ noteId: string; previous: string; formatted: string } | null>(
     null,
   );
@@ -656,19 +655,11 @@ export default function App() {
                 <button
                   type="button"
                   className="topbar-tool"
-                  aria-haspopup="dialog"
-                  title="算式书写格式设置"
-                  onClick={() => setFormatOpen(true)}
-                >
-                  格式
-                </button>
-                <button
-                  type="button"
-                  className="topbar-tool"
                   title="按格式设置整理当前笔记的全部算式"
                   onClick={applyFormatting}
                 >
-                  格式化
+                  <Sparkles size={16} />
+                  <span>格式化</span>
                 </button>
               </>
             )}
@@ -903,22 +894,13 @@ export default function App() {
           </div>
         </Dialog>
       )}
-      {formatOpen && workspace && (
-        <FormatDialog
-          settings={workspace.format}
-          onChange={changeFormat}
-          onApply={() => {
-            applyFormatting();
-            setFormatOpen(false);
-          }}
-          onClose={() => setFormatOpen(false)}
-        />
-      )}
-      {settingsOpen && storage && (
+      {settingsOpen && workspace && storage && (
         <SettingsDialog
           directory={storage.directory}
           defaultDirectory={storage.defaultDirectory}
           canChooseDirectory={storage.canChoose}
+          format={workspace.format}
+          onChangeFormat={changeFormat}
           version={__APP_VERSION__}
           buildTime={__BUILD_TIME__}
           githubUrl={__GITHUB_URL__}

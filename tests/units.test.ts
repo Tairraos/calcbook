@@ -105,3 +105,78 @@ test("按格式设置格式化整篇", () => {
     "总价 = 20% of 150\n面积 = sqrt(9) + 2\n预算: 交通 + 住宿\n5(3 + 2)",
   );
 });
+
+test("格式化统一乘号写法，保留除法写法", () => {
+  // x 与 * 都排成 ×，不再把 x 当成单位吸附到数字上
+  assert.equal(
+    formatNoteBody(
+      "2 x 3\n2x3\n2 * 3\n票价 x 人数\n距离=90km x 2",
+      DEFAULT_FORMAT_SETTINGS,
+      () => null,
+    ),
+    "2 × 3\n2 × 3\n2 × 3\n票价 × 人数\n距离 = 90km × 2",
+  );
+  // 变量名里的 x 与单独的 x 不受影响
+  assert.equal(
+    formatNoteBody("x = 5\nx × 2\nmax=3\nmax x 2", DEFAULT_FORMAT_SETTINGS, () => null),
+    "x = 5\nx × 2\nmax = 3\nmax × 2",
+  );
+  // 除法符号与斜杠都不被替换（÷ 不会变 /，/ 也不会变 ÷）；
+  // 空格仍按运算符空格设置，与 + - 一致
+  assert.equal(
+    formatNoteBody("10 / 3\n10 ÷ 3\n1/2+1/3\n(2+2)/4#单位", DEFAULT_FORMAT_SETTINGS, () => null),
+    "10 / 3\n10 ÷ 3\n1 / 2 + 1 / 3\n(2 + 2) / 4 # 单位",
+  );
+  assert.equal(
+    formatNoteBody(
+      "10 / 3\n10 ÷ 3",
+      { ...DEFAULT_FORMAT_SETTINGS, operatorSpace: false },
+      () => null,
+    ),
+    "10/3\n10÷3",
+  );
+  // 关闭运算符空格时，乘号同样统一但不加空格
+  assert.equal(
+    formatNoteBody(
+      "2 x 3\n2 * 3",
+      { ...DEFAULT_FORMAT_SETTINGS, operatorSpace: false },
+      () => null,
+    ),
+    "2×3\n2×3",
+  );
+});
+
+test("格式化不改变计算结果", () => {
+  // 乘号统一属于写法改写：格式化前后的求值结果必须逐行一致。
+  const body = [
+    "2 x 3",
+    "2x3",
+    "2 * 3",
+    "12 x 12",
+    "票价 = 30",
+    "票价 x 人数",
+    "人数 = 4",
+    "10 / 4",
+    "10 ÷ 4",
+    "x = 5",
+    "x × 2",
+  ].join("\n");
+  const formatted = formatNoteBody(body, DEFAULT_FORMAT_SETTINGS, () => null);
+  assert.equal(
+    formatted,
+    [
+      "2 × 3",
+      "2 × 3",
+      "2 × 3",
+      "12 × 12",
+      "票价 = 30",
+      "票价 × 人数",
+      "人数 = 4",
+      "10 / 4",
+      "10 ÷ 4",
+      "x = 5",
+      "x × 2",
+    ].join("\n"),
+  );
+  assert.deepEqual(display(formatted), display(body));
+});
