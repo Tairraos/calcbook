@@ -1532,6 +1532,7 @@ fieldset.settings-section {
 }
 .help-tabpanel table {
   width: 100%;
+  min-width: 480px;
   border-collapse: collapse;
   font-size: 12px;
   text-align: left;
@@ -1552,6 +1553,15 @@ fieldset.settings-section {
 }
 .help-tabpanel td:first-child {
   white-space: nowrap;
+}
+/* 作用列为短标签（长度（英制）等），留出约 6 个汉字的宽度，避免被写法列挤成两行 */
+.help-tabpanel td:nth-child(2) {
+  min-width: 6.5em;
+}
+/* 单位清单列：已按「；」断行，过长的一项再按空格折行，列宽不再被撑满 */
+.help-tabpanel td.term-lines {
+  white-space: normal;
+  line-height: 1.7;
 }
 .help-tabpanel td code,
 .help-tabpanel th code {

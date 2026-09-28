@@ -15,7 +15,9 @@ const examples = [
   ["上一行结果", "12 × 3\nprev + 4", "40"],
 ];
 
-type ReferenceGroup = { title: string; rows: [string, string, string][] };
+// termLines：写法列是一串单位清单，按「；」分词后每项独占一行、需要时折行，
+// 避免整列被最长的一项撑宽。
+type ReferenceGroup = { title: string; rows: [string, string, string][]; termLines?: boolean };
 
 const functionGroups: ReferenceGroup[] = [
   {
@@ -72,13 +74,14 @@ for (let index = 0; index < UNITS.length; index += 4) {
   unitReservedRows.push([
     chunk.map((entry) => `${entry.zh} → ${entry.en}`).join("；"),
     "单位",
-    "不可用作变量名",
+    "-",
   ]);
 }
 const reservedGroups: ReferenceGroup[] = [
   {
     title: "保留字 · 单位（中英对照，全部不可用作变量名）",
     rows: unitReservedRows,
+    termLines: true,
   },
   {
     title: "保留字 · 函数、常量、汇总与关键字",
@@ -120,6 +123,7 @@ const keywordGroups: ReferenceGroup[] = [
 const unitGroups: ReferenceGroup[] = [
   {
     title: "公制与英制（中英都认识，混算并入公制）",
+    termLines: true,
     rows: [
       [
         "公里 / 千米 → km；米 → m；厘米 → cm；毫米 / 微米 / 纳米 → mm / um / nm",
@@ -164,6 +168,7 @@ const unitGroups: ReferenceGroup[] = [
   },
   {
     title: "能量、功率与其他",
+    termLines: true,
     rows: [
       [
         "焦 / 焦耳 → J；千焦 → kJ；卡 / 卡路里 → cal；千卡 / 大卡 → kcal",
@@ -187,6 +192,7 @@ const unitGroups: ReferenceGroup[] = [
   },
   {
     title: "混算与显示规则",
+    termLines: true,
     rows: [
       ["公制英制混算", "英制并入公制，结果以公制呈现", "1 mile + 1 km → 2.609344 km"],
       ["纯英制", "没有公制参与时保持英制", "1 mile + 1 ft → 1.0001893939394 mile"],
@@ -198,6 +204,7 @@ const unitGroups: ReferenceGroup[] = [
   },
   {
     title: "货币与符号",
+    termLines: true,
     rows: [
       ["¥ → CNY；$ → USD；€ → EUR；£ → GBP", "货币符号", "$20 + 5 USD → 25 USD"],
       [
@@ -240,7 +247,18 @@ function renderCell(text: string) {
   });
 }
 
-function ReferenceTable({ title, rows }: ReferenceGroup) {
+// 单位清单一格：按「；」断行，分号留在行尾。
+function renderTermLines(text: string) {
+  const segments = text.split("；");
+  return segments.map((segment, index) => (
+    <span key={segment}>
+      {renderCell(index < segments.length - 1 ? `${segment}；` : segment)}
+      {index < segments.length - 1 && <br />}
+    </span>
+  ));
+}
+
+function ReferenceTable({ title, rows, termLines }: ReferenceGroup) {
   return (
     <section>
       <h3>{title}</h3>
@@ -255,8 +273,8 @@ function ReferenceTable({ title, rows }: ReferenceGroup) {
         <tbody>
           {rows.map(([term, role, example]) => (
             <tr key={term}>
-              <td>
-                <code>{renderCell(term)}</code>
+              <td className={termLines ? "term-lines" : undefined}>
+                <code>{termLines ? renderTermLines(term) : renderCell(term)}</code>
               </td>
               <td>{renderCell(role)}</td>
               <td>
@@ -374,7 +392,7 @@ export function HelpDialog({
           hidden={active !== id}
         >
           {groups.map((group) => (
-            <ReferenceTable key={group.title} title={group.title} rows={group.rows} />
+            <ReferenceTable key={group.title} {...group} />
           ))}
         </div>
       ))}
