@@ -9,22 +9,11 @@ use std::{
 const MAX_FILE_BYTES: u64 = 24_000_000;
 const MAX_FILENAME_BYTES: usize = 160;
 const WORKSPACE_FILE: &str = "workspace.json";
+const RECYCLED_DIR: &str = "recycled";
+pub const MAX_NOTES: usize = 100;
 
-/// 每篇笔记的正文是数据目录下一个 Numi 兼容的 .txt 文件；workspace.json 只保存元数据与文件名映射。
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct PayloadNote {
-    id: String,
-    title: String,
-    #[serde(default)]
-    filename: String,
-    #[serde(default)]
-    body: String,
-    created_at: String,
-    updated_at: String,
-    trashed: bool,
-}
-
+/// 扫描结果：正文完全以 .txt 文件为事实来源（数据目录 = 笔记，recycled/ = 废纸篓），
+/// workspace.json 只保存主题、当前笔记与格式设置。
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Payload {
@@ -36,30 +25,33 @@ pub struct Payload {
     format: FormatSettings,
 }
 
-/// 落盘的元数据：正文在 .txt 文件里，这里不重复保存。
+/// 单篇笔记：id 即文件相对路径（`预算.txt` 或 `recycled/预算.txt`）。
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-struct MetaNote {
+pub struct PayloadNote {
     id: String,
-    title: String,
+    #[serde(default)]
     filename: String,
+    title: String,
+    #[serde(default)]
+    body: String,
     created_at: String,
     updated_at: String,
     trashed: bool,
 }
 
+/// 落盘的工作区设置（主题、当前笔记、格式），不含笔记清单。
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
-struct Meta {
+struct WorkspaceSettings {
     version: u8,
-    notes: Vec<MetaNote>,
     active_id: Option<String>,
     theme: String,
     #[serde(default)]
     format: FormatSettings,
 }
 
-/// 读取时兼容改造前的单文件格式：正文内联在 workspace.json 里，且没有 filename。
+// 兼容读取改造前的格式：正文内联在 workspace.json、笔记清单驱动。
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct StoredNote {
@@ -69,8 +61,7 @@ struct StoredNote {
     filename: Option<String>,
     #[serde(default)]
     body: Option<String>,
-    created_at: String,
-    updated_at: String,
+    #[serde(default)]
     trashed: bool,
 }
 
@@ -78,18 +69,13 @@ struct StoredNote {
 #[serde(rename_all = "camelCase")]
 struct Stored {
     version: u8,
+    #[serde(default)]
     notes: Vec<StoredNote>,
+    #[serde(default)]
     active_id: Option<String>,
     theme: String,
     #[serde(default)]
     format: Option<FormatSettings>,
-}
-
-fn valid_theme(theme: &str) -> bool {
-    matches!(
-        theme,
-        "light" | "dark" | "paper" | "sand" | "mist" | "forest" | "midnight" | "graphite"
-    )
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -147,6 +133,13 @@ impl FormatSettings {
     }
 }
 
+fn valid_theme(theme: &str) -> bool {
+    matches!(
+        theme,
+        "light" | "dark" | "paper" | "sand" | "mist" | "forest" | "midnight" | "graphite"
+    )
+}
+
 fn truncate_bytes(text: &str, limit: usize) -> String {
     let mut result = String::new();
     for character in text.chars() {
@@ -158,8 +151,8 @@ fn truncate_bytes(text: &str, limit: usize) -> String {
     result
 }
 
-/// 用标题生成文件名；标题里不能进文件名的字符换成 `-`，为空时退回笔记 id。
-pub fn slugify(title: &str, id: &str) -> String {
+/// 用标题生成文件名；标题里不能进文件名的字符换成 `-`，为空时退回给定的兜底名。
+pub fn slugify(title: &str, fallback: &str) -> String {
     let cleaned: String = title
         .chars()
         .map(|character| {
@@ -172,7 +165,7 @@ pub fn slugify(title: &str, id: &str) -> String {
         .collect();
     let trimmed = cleaned.trim().trim_matches(['.', ' ']).to_string();
     let stem = if trimmed.is_empty() {
-        truncate_bytes(id, 60)
+        truncate_bytes(fallback, 60)
     } else {
         truncate_bytes(&trimmed, MAX_FILENAME_BYTES - 4)
     };
@@ -194,7 +187,7 @@ fn unique_name(name: String, used: &HashSet<String>) -> String {
     format!("{}-{}.txt", stem, used.len())
 }
 
-/// 文件名只能是不含路径的普通名称，防止元数据把读写带出数据目录。
+/// 文件名只能是不含路径的普通名称，防止读写被带出数据目录。
 fn validate_filename(name: &str) -> Result<(), String> {
     let path = Path::new(name);
     if name.is_empty()
@@ -204,21 +197,27 @@ fn validate_filename(name: &str) -> Result<(), String> {
         || path.components().count() != 1
         || path.file_name().is_none_or(|file| file != name)
     {
-        return Err("笔记文件名无效，原文件已保留".into());
+        return Err("笔记文件名无效".into());
     }
     Ok(())
 }
 
-fn read_body(directory: &Path, filename: &str) -> Result<String, String> {
-    let path = directory.join(filename);
-    let metadata = fs::metadata(&path)
-        .map_err(|error| format!("无法读取笔记 {filename}：{error}。原数据未改动"))?;
-    if metadata.len() > MAX_FILE_BYTES {
-        return Err(format!("笔记 {filename} 超过 24 MB，原文件已保留"));
-    }
-    let bytes = fs::read(&path)
-        .map_err(|error| format!("无法读取笔记 {filename}：{error}。原数据未改动"))?;
-    String::from_utf8(bytes).map_err(|_| format!("笔记 {filename} 不是 UTF-8 文本，原文件已保留"))
+/// 笔记 id（文件相对路径）→ 数据目录内的实际路径；recycled/ 前缀即废纸篓。
+/// id 来自前端，这里做路径安全校验。
+pub fn resolve_note_path(directory: &Path, note_id: &str) -> Result<(PathBuf, bool), String> {
+    const PREFIX: &str = "recycled/";
+    let (name, trashed) = if let Some(rest) = note_id.strip_prefix(PREFIX) {
+        (rest, true)
+    } else {
+        (note_id, false)
+    };
+    validate_filename(name)?;
+    let path = if trashed {
+        directory.join(RECYCLED_DIR).join(name)
+    } else {
+        directory.join(name)
+    };
+    Ok((path, trashed))
 }
 
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
@@ -234,259 +233,407 @@ fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     fs::rename(&temporary, path).map_err(|error| format!("替换文件失败：{error}"))
 }
 
-impl Payload {
-    /// 按 id 查找笔记的落盘文件名（元数据里的文件名已过 slugify 与落盘校验）。
-    pub fn filename_of(&self, note_id: &str) -> Option<&str> {
-        self.notes
-            .iter()
-            .find(|note| note.id == note_id)
-            .map(|note| note.filename.as_str())
-            .filter(|name| !name.is_empty())
-    }
+/// Unix 秒 → ISO 8601（UTC）。避免为此引入日期库。
+fn iso_timestamp(secs: i64) -> String {
+    let days = secs.div_euclid(86400);
+    let rem = secs.rem_euclid(86400);
+    let (hour, minute, second) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+    // Howard Hinnant civil_from_days：天数 → 年月日
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let year = yoe + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = doy - (153 * mp + 2) / 5 + 1;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if month <= 2 { year + 1 } else { year };
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{minute:02}:{second:02}.000Z")
 }
 
-fn meta_from(payload: &Payload) -> Meta {
-    Meta {
-        version: payload.version,
-        notes: payload
-            .notes
-            .iter()
-            .map(|note| MetaNote {
-                id: note.id.clone(),
-                title: note.title.clone(),
-                filename: note.filename.clone(),
-                created_at: note.created_at.clone(),
-                updated_at: note.updated_at.clone(),
-                trashed: note.trashed,
-            })
-            .collect(),
-        active_id: payload.active_id.clone(),
-        theme: payload.theme.clone(),
-        format: payload.format.clone(),
-    }
+fn file_timestamps(path: &Path) -> (String, String) {
+    let metadata = fs::metadata(path).ok();
+    let secs = |time: Option<std::time::SystemTime>| -> i64 {
+        time.and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|duration| duration.as_secs() as i64)
+            .unwrap_or(0)
+    };
+    let modified = secs(metadata.as_ref().and_then(|meta| meta.modified().ok()));
+    let created = secs(metadata.as_ref().and_then(|meta| meta.created().ok()));
+    (iso_timestamp(created), iso_timestamp(modified))
 }
 
-fn read_stored(directory: &Path) -> Result<Option<Stored>, String> {
+/// 从正文取标题：首个非空行若是 `# 标题` 则用之，否则用文件名主干。
+fn derive_title(body: &str, stem: &str) -> String {
+    for line in body.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if let Some(rest) = trimmed.strip_prefix('#') {
+            let title = rest.trim();
+            if !title.is_empty() {
+                return truncate_bytes(title, 120);
+            }
+        }
+        break;
+    }
+    truncate_bytes(stem, 120)
+}
+
+fn read_text_file(path: &Path) -> Result<String, String> {
+    let name = path
+        .file_name()
+        .map(|stem| stem.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let metadata = fs::metadata(path)
+        .map_err(|error| format!("无法读取笔记 {name}：{error}。原文件未改动"))?;
+    if metadata.len() > MAX_FILE_BYTES {
+        return Err(format!(
+            "笔记 {name} 超过 24 MB，请把该文件移出笔记文件夹后重试"
+        ));
+    }
+    let bytes =
+        fs::read(path).map_err(|error| format!("无法读取笔记 {name}：{error}。原文件未改动"))?;
+    String::from_utf8(bytes).map_err(|_| format!("笔记 {name} 不是 UTF-8 文本，原文件未改动"))
+}
+
+/// 扫描一个目录层（正常笔记或废纸篓），按更新时间从新到旧排序。
+fn scan_layer(
+    directory: &Path,
+    sub: Option<&str>,
+    trashed: bool,
+) -> Result<Vec<PayloadNote>, String> {
+    let base = match sub {
+        Some(sub) => directory.join(sub),
+        None => directory.to_path_buf(),
+    };
+    let mut entries: Vec<(PathBuf, String, std::time::SystemTime)> = Vec::new();
+    for entry in fs::read_dir(&base).map_err(|error| format!("无法读取笔记目录：{error}"))?
+    {
+        let entry = entry.map_err(|error| format!("无法读取笔记目录：{error}"))?;
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.ends_with(".txt") || name.starts_with('.') || name.ends_with(".tmp") {
+            continue;
+        }
+        if validate_filename(&name).is_err() {
+            continue;
+        }
+        let modified = entry
+            .metadata()
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|duration| duration.as_secs())
+            .unwrap_or(0);
+        entries.push((
+            path,
+            name,
+            std::time::UNIX_EPOCH + std::time::Duration::from_secs(modified),
+        ));
+    }
+    // 最近更新的先出现在列表里
+    entries.sort_by_key(|(_, _, modified)| std::cmp::Reverse(*modified));
+    let mut notes = Vec::new();
+    for (path, name, _) in entries {
+        let body = read_text_file(&path)?;
+        let (created_at, updated_at) = file_timestamps(&path);
+        let stem = name.strip_suffix(".txt").unwrap_or(&name).to_string();
+        let id = match sub {
+            Some(sub) => format!("{sub}/{name}"),
+            None => name.clone(),
+        };
+        notes.push(PayloadNote {
+            id,
+            filename: String::new(),
+            title: derive_title(&body, &stem),
+            body,
+            created_at,
+            updated_at,
+            trashed,
+        });
+    }
+    Ok(notes)
+}
+
+/// 启动扫描：数据目录与 recycled/ 下的全部 .txt 都是笔记。
+/// 外部新增/删除的文件在扫描时自动同步。
+pub fn scan(directory: &Path) -> Result<Payload, String> {
+    fs::create_dir_all(directory).map_err(|error| format!("无法创建笔记目录：{error}"))?;
+    fs::create_dir_all(directory.join(RECYCLED_DIR))
+        .map_err(|error| format!("无法创建废纸篓目录：{error}"))?;
+    let settings = read_workspace_settings(directory)?;
+    let mut notes = scan_layer(directory, None, false)?;
+    notes.extend(scan_layer(directory, Some(RECYCLED_DIR), true)?);
+    if notes.len() > MAX_NOTES {
+        return Err(format!(
+            "笔记文件夹里有 {} 篇笔记，超过 {} 篇上限，请移出部分文件后重试",
+            notes.len(),
+            MAX_NOTES
+        ));
+    }
+    let active_id = settings
+        .active_id
+        .filter(|id| notes.iter().any(|note| note.id == *id));
+    Ok(Payload {
+        version: 1,
+        notes,
+        active_id,
+        theme: settings.theme,
+        format: settings.format,
+    })
+}
+
+fn read_workspace_settings(directory: &Path) -> Result<WorkspaceSettings, String> {
     let path = directory.join(WORKSPACE_FILE);
-    let metadata = match fs::metadata(&path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+    let bytes = match fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            return Ok(WorkspaceSettings {
+                version: 1,
+                active_id: None,
+                theme: "paper".into(),
+                format: FormatSettings::default(),
+            });
+        }
         Err(error) => return Err(format!("无法读取笔记：{error}")),
     };
-    if metadata.len() > MAX_FILE_BYTES {
-        return Err("笔记文件超过 24 MB，原文件已保留".into());
-    }
-    let data = fs::read(&path).map_err(|error| format!("无法读取笔记：{error}"))?;
-    let stored: Stored = serde_json::from_slice(&data)
+    // 旧版清单格式（notes 内联）先迁移成 .txt 文件，再读取设置
+    let probe: serde_json::Value = serde_json::from_slice(&bytes)
         .map_err(|error| format!("笔记文件损坏，原文件已保留：{error}"))?;
-    Ok(Some(stored))
+    if probe.get("notes").is_some() {
+        migrate_legacy(directory)?;
+        let fresh = fs::read(&path).map_err(|error| format!("无法读取笔记：{error}"))?;
+        let settings: WorkspaceSettings = serde_json::from_slice(&fresh)
+            .map_err(|error| format!("笔记文件损坏，原文件已保留：{error}"))?;
+        settings.format.validate()?;
+        return Ok(settings);
+    }
+    let settings: WorkspaceSettings = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("笔记文件损坏，原文件已保留：{error}"))?;
+    if !valid_theme(&settings.theme) {
+        return Err("主题配置无效".into());
+    }
+    settings.format.validate()?;
+    Ok(settings)
 }
 
-fn validate_stored(stored: &Stored) -> Result<(), String> {
-    if stored.version != 1 || stored.notes.len() > 100 {
-        return Err("笔记版本不受支持或笔记数量超过 100 篇".into());
+/// 旧版单文件工作区（notes 内联）的迁移：正文写成 .txt、废纸篓移入 recycled/，
+/// workspace.json 重写为只含设置；原文件备份为 workspace.json.bak。
+fn migrate_legacy(directory: &Path) -> Result<(), String> {
+    let path = directory.join(WORKSPACE_FILE);
+    let bytes = fs::read(&path).map_err(|error| format!("无法读取笔记：{error}"))?;
+    let stored: Stored = serde_json::from_slice(&bytes)
+        .map_err(|error| format!("笔记文件损坏，原文件已保留：{error}"))?;
+    if stored.version != 1 {
+        return Err("笔记版本不受支持".into());
     }
     if !valid_theme(&stored.theme) {
         return Err("主题配置无效".into());
     }
-    if let Some(format) = stored.format.as_ref() {
-        format.validate()?;
-    }
-    let mut ids = HashSet::new();
-    for note in &stored.notes {
-        if note.id.is_empty()
-            || note.id.len() > 100
-            || !ids.insert(note.id.as_str())
-            || note.title.encode_utf16().count() > 120
-            || note.created_at.is_empty()
-            || note.updated_at.is_empty()
-            || note.created_at.len() > 40
-            || note.updated_at.len() > 40
-        {
-            return Err("笔记内容无效或超过长度限制".into());
-        }
-        if let Some(body) = note.body.as_ref() {
-            if body.encode_utf16().count() > 100_000 {
-                return Err("笔记内容无效或超过长度限制".into());
-            }
-        }
-        if let Some(filename) = note.filename.as_ref() {
-            validate_filename(filename)?;
-        }
-    }
-    if stored
-        .active_id
-        .as_ref()
-        .is_some_and(|id| !ids.contains(id.as_str()))
+    let format = stored.format.clone().unwrap_or_default();
+    format.validate()?;
+    fs::copy(&path, directory.join("workspace.json.bak"))
+        .map_err(|error| format!("备份笔记失败：{error}"))?;
+    fs::create_dir_all(directory.join(RECYCLED_DIR))
+        .map_err(|error| format!("无法创建废纸篓目录：{error}"))?;
+    let mut used: HashSet<String> = HashSet::new();
+    for entry in fs::read_dir(directory).map_err(|error| format!("无法读取笔记目录：{error}"))?
     {
-        return Err("当前笔记引用无效".into());
+        let entry = entry.map_err(|error| format!("无法读取笔记目录：{error}"))?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.ends_with(".txt") {
+            used.insert(name);
+        }
     }
-    Ok(())
-}
-
-pub fn load(directory: &Path) -> Result<Option<Payload>, String> {
-    load_inner(directory, true)
-}
-
-/// `migrate` 为假时只读不写：用于旧数据目录，读取时保持原文件字节不变。
-fn load_inner(directory: &Path, migrate: bool) -> Result<Option<Payload>, String> {
-    let Some(stored) = read_stored(directory)? else {
-        return Ok(None);
-    };
-    validate_stored(&stored)?;
-    // 已有的文件名先占位，避免改造前的旧笔记把别人的文件顶掉。
-    let mut used: HashSet<String> = stored
-        .notes
-        .iter()
-        .filter_map(|note| note.filename.clone())
-        .collect();
-    let mut migrated = false;
-    let mut notes = Vec::new();
     for note in &stored.notes {
-        let filename = match note.filename.clone() {
-            Some(filename) => filename,
-            None => {
-                migrated = true;
-                let name = unique_name(slugify(&note.title, &note.id), &used);
-                used.insert(name.clone());
-                name
-            }
+        let filename = match note.filename.as_deref().filter(|name| !name.is_empty()) {
+            Some(filename) => filename.to_string(),
+            None => unique_name(slugify(&note.title, &note.id), &used),
         };
-        let body = match note.body.clone() {
-            Some(body) => {
-                migrated = true;
-                body
-            }
-            None => read_body(directory, &filename)?,
+        used.insert(filename.clone());
+        let target_dir = if note.trashed {
+            directory.join(RECYCLED_DIR)
+        } else {
+            directory.to_path_buf()
         };
-        notes.push(PayloadNote {
-            id: note.id.clone(),
-            title: note.title.clone(),
-            filename,
-            body,
-            created_at: note.created_at.clone(),
-            updated_at: note.updated_at.clone(),
-            trashed: note.trashed,
-        });
+        let target = target_dir.join(&filename);
+        if !target.exists() {
+            if let Some(body) = note.body.as_deref() {
+                write_atomic(&target, body.as_bytes())
+                    .map_err(|error| format!("迁移笔记 {filename} 失败：{error}"))?;
+            }
+        }
     }
-    let payload = Payload {
+    let settings = WorkspaceSettings {
         version: 1,
-        notes,
         active_id: stored.active_id.clone(),
         theme: stored.theme.clone(),
-        format: stored.format.clone().unwrap_or_default(),
+        format,
     };
-    if migrated && migrate {
-        save(directory, &payload)?;
-    }
-    Ok(Some(payload))
+    let out = serde_json::to_vec_pretty(&settings).map_err(|error| error.to_string())?;
+    write_atomic(&path, &out).map_err(|error| format!("替换笔记文件失败：{error}"))
 }
 
-pub fn save(directory: &Path, payload: &Payload) -> Result<(), String> {
-    if payload.version != 1 || payload.notes.len() > 100 {
-        return Err("笔记版本不受支持或笔记数量超过 100 篇".into());
-    }
-    if !valid_theme(&payload.theme) {
+pub fn save_settings(
+    directory: &Path,
+    theme: &str,
+    active_id: Option<&str>,
+    format: &FormatSettings,
+) -> Result<(), String> {
+    if !valid_theme(theme) {
         return Err("主题配置无效".into());
     }
-    payload.format.validate()?;
-    let mut ids = HashSet::new();
-    for note in &payload.notes {
-        if note.id.is_empty()
-            || note.id.len() > 100
-            || !ids.insert(note.id.as_str())
-            || note.title.encode_utf16().count() > 120
-            || note.body.encode_utf16().count() > 100_000
-            || note.created_at.is_empty()
-            || note.updated_at.is_empty()
-            || note.created_at.len() > 40
-            || note.updated_at.len() > 40
-        {
-            return Err("笔记内容无效或超过长度限制".into());
-        }
-        // 空文件名表示由标题推导；非空则必须是安全的普通文件名。
-        if !note.filename.is_empty() {
-            validate_filename(&note.filename)?;
-        }
-    }
-    if payload
-        .active_id
-        .as_ref()
-        .is_some_and(|id| !ids.contains(id.as_str()))
-    {
-        return Err("当前笔记引用无效".into());
-    }
-
-    let previous = read_stored(directory)?;
-    if let Some(previous) = previous.as_ref() {
-        validate_stored(previous)?;
-    }
-    // 现有文件名先全部占位：重命名只发生在目标名还没被任何笔记使用的时候。
-    let taken: HashSet<&str> = payload
-        .notes
-        .iter()
-        .filter(|note| !note.filename.is_empty())
-        .map(|note| note.filename.as_str())
-        .collect();
-    let mut used = HashSet::new();
-    let mut planned = Vec::new();
-    for note in &payload.notes {
-        let slug = slugify(&note.title, &note.id);
-        let wanted = if note.filename.is_empty() || note.filename == slug {
-            slug
-        } else if used.contains(&slug) || taken.contains(slug.as_str()) {
-            note.filename.clone()
-        } else {
-            slug
-        };
-        let filename = unique_name(wanted, &used);
-        used.insert(filename.clone());
-        planned.push((filename, note.body.as_str()));
-    }
-    let mut meta = meta_from(payload);
-    for (note, (filename, _)) in meta.notes.iter_mut().zip(&planned) {
-        note.filename = filename.clone();
-    }
-
-    fs::create_dir_all(directory).map_err(|error| format!("无法创建笔记目录：{error}"))?;
-    // 先写正文，再换元数据：中途失败时旧元数据仍指向完整的旧内容。
-    for (filename, body) in &planned {
-        validate_filename(filename)?;
-        let path = directory.join(filename);
-        if fs::read(&path).is_ok_and(|current| current == body.as_bytes()) {
-            continue;
-        }
-        write_atomic(&path, body.as_bytes())
-            .map_err(|error| format!("保存笔记 {filename} 失败：{error}"))?;
-    }
-    let bytes = serde_json::to_vec(&meta).map_err(|error| error.to_string())?;
-    if bytes.len() as u64 > MAX_FILE_BYTES {
-        return Err("笔记文件超过 24 MB，未覆盖原文件".into());
-    }
-    let path = directory.join(WORKSPACE_FILE);
-    if path.exists() {
-        // 无法读取或版本不明的原文件一律不覆盖。
-        read_stored(directory)?.ok_or("笔记文件在保存过程中消失，未覆盖任何内容")?;
-        fs::copy(&path, directory.join("workspace.json.bak"))
-            .map_err(|error| format!("备份笔记失败：{error}"))?;
-    }
-    write_atomic(&path, &bytes).map_err(|error| format!("替换笔记文件失败：{error}"))?;
-    #[cfg(unix)]
-    fs::File::open(directory)
-        .and_then(|file| file.sync_all())
-        .map_err(|error| format!("笔记已写入，但磁盘同步失败：{error}"))?;
-
-    // 只清理上一份元数据里由本应用管理的文件；用户自己放进来的 .txt 不动。
-    if let Some(previous) = previous {
-        for note in &previous.notes {
-            if let Some(filename) = note.filename.as_ref() {
-                if !used.contains(filename) {
-                    let _ = fs::remove_file(directory.join(filename));
+    format.validate()?;
+    // 当前笔记必须真实存在（数据目录或 recycled/），否则丢弃引用
+    let mut used: HashSet<String> = HashSet::new();
+    for place in [directory.to_path_buf(), directory.join(RECYCLED_DIR)] {
+        if let Ok(entries) = fs::read_dir(&place) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.ends_with(".txt") {
+                    used.insert(name);
                 }
             }
         }
     }
+    let active_id = active_id.filter(|id| {
+        let name = id.strip_prefix("recycled/").unwrap_or(id);
+        used.contains(name)
+    });
+    let settings = WorkspaceSettings {
+        version: 1,
+        active_id: active_id.map(|id| id.to_string()),
+        theme: theme.to_string(),
+        format: format.clone(),
+    };
+    let bytes = serde_json::to_vec_pretty(&settings).map_err(|error| error.to_string())?;
+    fs::create_dir_all(directory).map_err(|error| format!("无法创建笔记目录：{error}"))?;
+    write_atomic(&directory.join(WORKSPACE_FILE), &bytes)
+        .map_err(|error| format!("替换笔记文件失败：{error}"))
+}
+
+// 会话内笔记可能在数据目录与 recycled/ 之间移动，而前端 id 恒为无前缀形态：
+// 写/删/确保都以「两个位置里真实存在的那份」为准。
+fn locate_note(directory: &Path, note_id: &str) -> Result<(PathBuf, bool), String> {
+    let (normal, recycled_path) = resolve_pair(directory, note_id)?;
+    if normal.exists() {
+        return Ok((normal, false));
+    }
+    if recycled_path.exists() {
+        return Ok((recycled_path, true));
+    }
+    Ok((normal, false))
+}
+
+fn resolve_pair(directory: &Path, note_id: &str) -> Result<(PathBuf, PathBuf), String> {
+    let (normal, _) = resolve_note_path(directory, note_id)?;
+    let recycled_path = directory.join(RECYCLED_DIR).join(
+        normal
+            .file_name()
+            .map(|stem| stem.to_os_string())
+            .ok_or("笔记文件名无效")?,
+    );
+    Ok((normal, recycled_path))
+}
+
+/// 写单篇笔记（新建与覆盖同一路径；文件不存在即创建）。
+pub fn write_note(directory: &Path, note_id: &str, body: &str) -> Result<(), String> {
+    let (path, _) = locate_note(directory, note_id)?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| format!("无法创建笔记目录：{error}"))?;
+    }
+    write_atomic(&path, body.as_bytes()).map_err(|error| format!("保存笔记失败：{error}"))
+}
+
+/// 废纸篓进出：文件在数据目录与 recycled/ 之间改名。
+pub fn move_note(directory: &Path, note_id: &str, to_recycled: bool) -> Result<(), String> {
+    let (normal, recycled_path) = resolve_pair(directory, note_id)?;
+    fs::create_dir_all(directory.join(RECYCLED_DIR))
+        .map_err(|error| format!("无法创建废纸篓目录：{error}"))?;
+    let (source, target) = if to_recycled {
+        (normal, recycled_path)
+    } else {
+        (recycled_path, normal)
+    };
+    if !source.exists() {
+        return Err("笔记文件不存在".into());
+    }
+    if target.exists() {
+        return Err("同名文件已存在".into());
+    }
+    fs::rename(&source, &target).map_err(|error| format!("无法移动笔记：{error}"))
+}
+
+/// 永久删除单篇笔记文件：数据目录与 recycled/ 两个位置都清理；不存在时视为成功。
+pub fn delete_note(directory: &Path, note_id: &str) -> Result<(), String> {
+    let (normal, recycled_path) = resolve_pair(directory, note_id)?;
+    for path in [normal, recycled_path] {
+        match fs::remove_file(&path) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(format!("无法删除笔记：{error}")),
+        }
+    }
     Ok(())
+}
+
+/// 运行期间文件被外部删除时：点击笔记即按已知信息（文件名与首行标题）重建同名文件。
+pub fn ensure_note(directory: &Path, note_id: &str, title: &str) -> Result<bool, String> {
+    let (normal, recycled_path) = resolve_pair(directory, note_id)?;
+    if normal.exists() || recycled_path.exists() {
+        return Ok(false);
+    }
+    fs::create_dir_all(directory).map_err(|error| format!("无法创建笔记目录：{error}"))?;
+    write_atomic(&normal, format!("# {title}\n").as_bytes())
+        .map_err(|error| format!("无法重建笔记：{error}"))?;
+    Ok(true)
+}
+
+/// 新建笔记：标题生成唯一文件名，正文落盘，返回笔记。
+pub fn create_note(directory: &Path, title: &str, body: &str) -> Result<PayloadNote, String> {
+    fs::create_dir_all(directory).map_err(|error| format!("无法创建笔记目录：{error}"))?;
+    let mut used: HashSet<String> = HashSet::new();
+    for place in [directory.to_path_buf(), directory.join(RECYCLED_DIR)] {
+        if let Ok(entries) = fs::read_dir(&place) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.ends_with(".txt") {
+                    used.insert(name);
+                }
+            }
+        }
+    }
+    if used.len() >= MAX_NOTES {
+        return Err(format!("笔记数量已达 {} 篇上限", MAX_NOTES));
+    }
+    let filename = unique_name(slugify(title, "未命名"), &used);
+    let body = if body.is_empty() {
+        format!("# {title}\n")
+    } else {
+        body.to_string()
+    };
+    write_atomic(&directory.join(&filename), body.as_bytes())
+        .map_err(|error| format!("保存笔记失败：{error}"))?;
+    let (created_at, updated_at) = file_timestamps(&directory.join(&filename));
+    let stem = filename
+        .strip_suffix(".txt")
+        .unwrap_or(&filename)
+        .to_string();
+    Ok(PayloadNote {
+        id: filename.clone(),
+        filename: String::new(),
+        title: derive_title(&body, &stem),
+        body,
+        created_at,
+        updated_at,
+        trashed: false,
+    })
 }
 
 #[derive(Default, Deserialize, Serialize)]
@@ -533,24 +680,54 @@ impl Store {
     pub fn load(&self) -> Result<Option<Payload>, String> {
         let settings = self.settings()?;
         let directory = settings.data_directory.as_ref().unwrap_or(&self.default);
-        if let Some(workspace) = load(directory)? {
-            return Ok(Some(workspace));
+        let has_own = directory.join(WORKSPACE_FILE).exists()
+            || directory.join(RECYCLED_DIR).exists()
+            || fs::read_dir(directory)
+                .map(|entries| {
+                    entries
+                        .flatten()
+                        .any(|entry| entry.file_name().to_string_lossy().ends_with(".txt"))
+                })
+                .unwrap_or(false);
+        if has_own {
+            return Ok(Some(scan(directory)?));
         }
         if settings.data_directory.is_some() {
-            return Err("指定目录中的 workspace.json 不存在，请检查磁盘或恢复文件后重试".into());
+            return Err("指定目录中没有任何笔记，请检查磁盘或恢复文件后重试".into());
         }
         if let Some(legacy) = self.legacy.as_ref().filter(|path| *path != directory) {
-            // 旧目录只读：迁移结果写入当前数据目录，旧文件保持原样。
-            if let Some(workspace) = load_inner(legacy, false)? {
-                save(directory, &workspace)?;
-                return Ok(Some(workspace));
+            let has_legacy = fs::read_dir(legacy)
+                .map(|entries| {
+                    entries.flatten().any(|entry| {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        name == WORKSPACE_FILE || name.ends_with(".txt")
+                    })
+                })
+                .unwrap_or(false);
+            if has_legacy {
+                let payload = scan(legacy)?;
+                // 旧目录的文件全部搬进当前数据目录（recycled/ 结构原样保留）
+                for note in &payload.notes {
+                    let source = legacy.join(&note.id);
+                    let target = directory.join(&note.id);
+                    if let Some(parent) = target.parent() {
+                        fs::create_dir_all(parent)
+                            .map_err(|error| format!("无法创建笔记目录：{error}"))?;
+                    }
+                    fs::rename(&source, &target)
+                        .or_else(|_| fs::copy(&source, &target).map(|_| ()))
+                        .map_err(|error| format!("无法迁移旧笔记：{error}"))?;
+                }
+                let _ = fs::remove_file(legacy.join(WORKSPACE_FILE));
+                return Ok(Some(scan(directory)?));
             }
         }
         Ok(None)
     }
 
+    /// 换目录：目标文件夹必须是空的（没有 .txt 与 workspace.json），否则拒绝覆盖；
+    /// 把全部笔记文件、recycled/ 与 workspace.json 复制过去后再提交配置。
     pub fn relocate(&self, target: &Path) -> Result<(), String> {
-        // The target comes only from the native folder picker, never from webview input.
         let target =
             fs::canonicalize(target).map_err(|error| format!("无法打开所选目录：{error}"))?;
         if !target.is_dir() {
@@ -560,24 +737,44 @@ impl Store {
         if fs::canonicalize(&current).ok().as_ref() == Some(&target) {
             return Ok(());
         }
-        let workspace = load(&current)?.ok_or("请先保存笔记，再修改存储位置")?;
-        if let Some(existing) = load(&target)? {
-            if existing != workspace {
-                return Err("所选目录已包含另一份笔记，未覆盖。请选择空文件夹".into());
-            }
-        } else {
-            save(&target, &workspace)?;
+        let occupied = fs::read_dir(&target)
+            .map_err(|error| format!("无法读取所选目录：{error}"))?
+            .flatten()
+            .any(|entry| {
+                let name = entry.file_name().to_string_lossy().to_string();
+                name.ends_with(".txt") || name == WORKSPACE_FILE
+            });
+        if occupied {
+            return Err("所选文件夹已包含笔记，未覆盖。请选择空文件夹".into());
         }
-        // Commit the location only after the complete workspace is safely written.
+        let payload = scan(&current)?;
+        for note in &payload.notes {
+            let source = current.join(&note.id);
+            let target_path = target.join(&note.id);
+            if let Some(parent) = target_path.parent() {
+                fs::create_dir_all(parent).map_err(|error| format!("无法创建笔记目录：{error}"))?;
+            }
+            fs::copy(&source, &target_path).map_err(|error| format!("无法复制笔记：{error}"))?;
+        }
+        if current.join(RECYCLED_DIR).exists() {
+            fs::create_dir_all(target.join(RECYCLED_DIR))
+                .map_err(|error| format!("无法创建废纸篓目录：{error}"))?;
+        }
+        let bytes = fs::read(current.join(WORKSPACE_FILE)).unwrap_or_default();
+        if !bytes.is_empty() {
+            fs::write(target.join(WORKSPACE_FILE), &bytes)
+                .map_err(|error| format!("无法复制笔记：{error}"))?;
+        }
+        // 提交配置：失败时原目录保持不变
         fs::create_dir_all(&self.config).map_err(|error| format!("无法创建配置目录：{error}"))?;
-        let bytes = serde_json::to_vec(&Settings {
-            data_directory: Some(target),
+        let settings_bytes = serde_json::to_vec(&Settings {
+            data_directory: Some(target.clone()),
         })
         .map_err(|error| error.to_string())?;
         let temporary = self.config.join("settings.json.tmp");
         let mut file =
             fs::File::create(&temporary).map_err(|error| format!("无法暂存配置：{error}"))?;
-        file.write_all(&bytes)
+        file.write_all(&settings_bytes)
             .and_then(|()| file.sync_all())
             .map_err(|error| format!("存储位置未改变：{error}"))?;
         drop(file);
@@ -592,24 +789,6 @@ mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    fn sample() -> Payload {
-        Payload {
-            version: 1,
-            notes: vec![PayloadNote {
-                id: "note-1".into(),
-                title: "预算".into(),
-                filename: "预算.txt".into(),
-                body: "0.1 + 0.2".into(),
-                created_at: "2026-09-06T00:00:00.000Z".into(),
-                updated_at: "2026-09-06T00:00:00.000Z".into(),
-                trashed: false,
-            }],
-            active_id: Some("note-1".into()),
-            theme: "paper".into(),
-            format: FormatSettings::default(),
-        }
-    }
-
     fn temporary(name: &str) -> PathBuf {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -619,93 +798,78 @@ mod tests {
     }
 
     #[test]
-    fn bodies_live_in_txt_files_and_metadata_keeps_them_in_sync() {
-        let directory = temporary("roundtrip");
-        assert!(load(&directory).unwrap().is_none());
-        let mut workspace = sample();
-        save(&directory, &workspace).unwrap();
+    fn scan_reads_txt_files_with_recycled_and_titles() {
+        let directory = temporary("scan");
+        fs::create_dir_all(directory.join(RECYCLED_DIR)).unwrap();
+        fs::write(directory.join("预算.txt"), "# 旅行预算\n交通 = 186").unwrap();
+        fs::write(directory.join("b.txt"), "没有标题的笔记").unwrap();
+        fs::write(directory.join(RECYCLED_DIR).join("旧.txt"), "# 旧的").unwrap();
+        fs::write(directory.join("notes.md"), "不是笔记").unwrap();
+
+        let payload = scan(&directory).unwrap();
+        let ids: Vec<&str> = payload.notes.iter().map(|note| note.id.as_str()).collect();
+        assert_eq!(ids, ["预算.txt", "b.txt", "recycled/旧.txt"]);
+        assert_eq!(payload.notes[0].title, "旅行预算");
+        assert!(!payload.notes[0].trashed);
+        assert_eq!(payload.notes[1].title, "b");
+        assert!(payload.notes[2].trashed);
+        assert!(payload
+            .notes
+            .iter()
+            .all(|note| !note.created_at.is_empty() && !note.updated_at.is_empty()));
+        // 外部删除文件后，下一次扫描自动同步
+        fs::remove_file(directory.join("b.txt")).unwrap();
+        let payload = scan(&directory).unwrap();
+        assert_eq!(payload.notes.len(), 2);
+        // 外部新增文件也会被引入
+        fs::write(directory.join("新增.txt"), "# 新的").unwrap();
+        assert_eq!(scan(&directory).unwrap().notes.len(), 3);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn write_move_delete_and_ensure_cover_the_file_lifecycle() {
+        let directory = temporary("lifecycle");
+        write_note(&directory, "预算.txt", "# 预算\n100").unwrap();
         assert_eq!(
             fs::read_to_string(directory.join("预算.txt")).unwrap(),
-            "0.1 + 0.2"
+            "# 预算\n100"
         );
-        let meta: Meta =
-            serde_json::from_slice(&fs::read(directory.join(WORKSPACE_FILE)).unwrap()).unwrap();
-        assert_eq!(meta.notes[0].filename, "预算.txt");
-        assert!(
-            !fs::read_to_string(directory.join(WORKSPACE_FILE))
-                .unwrap()
-                .contains("0.1 + 0.2"),
-            "元数据不应重复保存正文"
-        );
-        assert_eq!(load(&directory).unwrap().unwrap(), workspace);
-
-        // 改标题会跟着改文件名，旧文件清理掉，正文保留。
-        let original = fs::read(directory.join(WORKSPACE_FILE)).unwrap();
-        workspace.notes[0].title = "新预算".into();
-        workspace.notes[0].body = "changed".into();
-        save(&directory, &workspace).unwrap();
-        // 文件名由存储层决定，前端保存后以 load 的结果为准。
-        workspace.notes[0].filename = "新预算.txt".into();
-        assert_eq!(load(&directory).unwrap().unwrap(), workspace);
+        write_note(&directory, "预算.txt", "# 预算\n200").unwrap();
         assert_eq!(
-            fs::read_to_string(directory.join("新预算.txt")).unwrap(),
-            "changed"
+            fs::read_to_string(directory.join("预算.txt")).unwrap(),
+            "# 预算\n200"
         );
+        // 进出废纸篓
+        move_note(&directory, "预算.txt", true).unwrap();
+        assert!(directory.join(RECYCLED_DIR).join("预算.txt").exists());
         assert!(!directory.join("预算.txt").exists());
-        assert_eq!(
-            fs::read(directory.join("workspace.json.bak")).unwrap(),
-            original
-        );
-
-        // 用户自己放进目录的 .txt 不会被当成孤儿删除。
-        fs::write(directory.join("Numi 笔记.txt"), "# 别人的文件").unwrap();
-        save(&directory, &workspace).unwrap();
-        assert!(directory.join("Numi 笔记.txt").exists());
-
-        fs::remove_dir_all(directory).unwrap();
-    }
-
-    #[test]
-    fn invalid_workspaces_never_overwrite_existing_files() {
-        let directory = temporary("invalid");
-        let workspace = sample();
-        save(&directory, &workspace).unwrap();
-        let current = fs::read(directory.join(WORKSPACE_FILE)).unwrap();
-        let body = fs::read(directory.join("预算.txt")).unwrap();
-
-        let mut invalid = workspace.clone();
-        invalid.version = 2;
-        assert!(save(&directory, &invalid).is_err());
-        invalid = workspace.clone();
-        invalid.notes.push(invalid.notes[0].clone());
-        assert!(save(&directory, &invalid).is_err());
-        invalid = workspace.clone();
-        invalid.notes[0].filename = "../escape.txt".into();
-        assert!(save(&directory, &invalid).is_err());
-        invalid = workspace.clone();
-        invalid.active_id = Some("missing".into());
-        assert!(save(&directory, &invalid).is_err());
-        assert_eq!(fs::read(directory.join(WORKSPACE_FILE)).unwrap(), current);
-        assert_eq!(fs::read(directory.join("预算.txt")).unwrap(), body);
-
-        fs::write(directory.join(WORKSPACE_FILE), b"broken-json").unwrap();
-        assert!(load(&directory).is_err());
-        assert!(save(&directory, &workspace).is_err());
-        assert_eq!(
-            fs::read(directory.join(WORKSPACE_FILE)).unwrap(),
-            b"broken-json"
-        );
-
-        // 元数据还在但正文文件丢失时，明确报错而不是当成空笔记。
-        fs::write(directory.join(WORKSPACE_FILE), &current).unwrap();
+        move_note(&directory, "预算.txt", false).unwrap();
+        assert!(directory.join("预算.txt").exists());
+        // 目标同名冲突
+        write_note(&directory, "recycled/预算.txt", "占位").unwrap();
+        assert!(move_note(&directory, "预算.txt", true).is_err());
+        fs::remove_file(directory.join(RECYCLED_DIR).join("预算.txt")).unwrap();
+        // 运行时外部删除：ensure 按已知信息（文件名与首行标题）重建
         fs::remove_file(directory.join("预算.txt")).unwrap();
-        assert!(load(&directory).is_err());
-
+        assert!(ensure_note(&directory, "预算.txt", "预算").unwrap());
+        assert_eq!(
+            fs::read_to_string(directory.join("预算.txt")).unwrap(),
+            "# 预算\n"
+        );
+        assert!(!ensure_note(&directory, "预算.txt", "预算").unwrap());
+        // 永久删除（recycled 内）
+        move_note(&directory, "预算.txt", true).unwrap();
+        delete_note(&directory, "recycled/预算.txt").unwrap();
+        assert!(!directory.join(RECYCLED_DIR).join("预算.txt").exists());
+        // 越界路径被拒绝
+        assert!(resolve_note_path(&directory, "../escape.txt").is_err());
+        assert!(resolve_note_path(&directory, "recycled/../escape.txt").is_err());
         fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
-    fn single_file_workspaces_are_migrated_into_txt_files() {
+    fn legacy_workspace_migrates_into_files_and_recycled() {
         let directory = temporary("migrate");
         fs::create_dir_all(&directory).unwrap();
         let legacy = serde_json::json!({
@@ -721,8 +885,8 @@ mod tests {
                 },
                 {
                     "id": "note-2",
-                    "title": "人体消耗计算",
-                    "body": "重名",
+                    "title": "废纸篓里的",
+                    "body": "旧的",
                     "createdAt": "2026-09-06T00:00:00.000Z",
                     "updatedAt": "2026-09-06T00:00:00.000Z",
                     "trashed": true
@@ -730,7 +894,12 @@ mod tests {
             ],
             "activeId": "note-1",
             "theme": "midnight",
-            "calculatorMode": "dialog"
+            "format": {
+                "operatorSpace": true,
+                "commentSpace": true,
+                "unitStyle": "free",
+                "unitSystem": "free"
+            }
         });
         fs::write(
             directory.join(WORKSPACE_FILE),
@@ -738,99 +907,54 @@ mod tests {
         )
         .unwrap();
 
-        let migrated = load(&directory).unwrap().unwrap();
-        assert_eq!(migrated.theme, "midnight");
-        assert_eq!(migrated.notes.len(), 2);
-        assert_eq!(migrated.notes[0].filename, "人体消耗计算.txt");
-        assert_eq!(migrated.notes[1].filename, "人体消耗计算 2.txt");
+        let payload = scan(&directory).unwrap();
+        assert_eq!(payload.theme, "midnight");
+        assert_eq!(payload.notes.len(), 2);
+        assert_eq!(payload.notes[0].id, "人体消耗计算.txt");
         assert_eq!(
             fs::read_to_string(directory.join("人体消耗计算.txt")).unwrap(),
             "# 人体消耗计算\nBMR = 1,566.25"
         );
-        assert_eq!(
-            fs::read_to_string(directory.join("人体消耗计算 2.txt")).unwrap(),
-            "重名"
-        );
-        // 迁移后元数据不再内联正文，旧文件留了一份备份。
+        assert_eq!(payload.notes[1].id, "recycled/废纸篓里的.txt");
+        assert!(directory.join(RECYCLED_DIR).join("废纸篓里的.txt").exists());
+        // workspace.json 重写为只含设置，旧文件留了备份
         let meta = fs::read_to_string(directory.join(WORKSPACE_FILE)).unwrap();
         assert!(!meta.contains("BMR"));
         assert!(directory.join("workspace.json.bak").exists());
-        assert_eq!(load(&directory).unwrap().unwrap(), migrated);
-
+        // 迁移后再扫描稳定
+        assert_eq!(scan(&directory).unwrap(), payload);
         fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
-    fn migration_relocation_and_failed_config_commit_preserve_all_workspaces() {
-        let root = temporary("relocation");
-        let store = Store {
-            config: root.join("config"),
-            default: root.join("default"),
-            legacy: Some(root.join("legacy")),
-        };
-        let legacy = store.legacy.clone().unwrap();
-        fs::create_dir_all(&legacy).unwrap();
-        let mut old = serde_json::to_value(sample()).unwrap();
-        old["notes"][0].as_object_mut().unwrap().remove("filename");
-        old["theme"] = "dark".into();
-        let legacy_bytes = serde_json::to_vec(&old).unwrap();
-        fs::write(legacy.join(WORKSPACE_FILE), &legacy_bytes).unwrap();
-        let workspace = store.load().unwrap().unwrap();
-        assert_eq!(workspace.theme, "dark");
-        assert_eq!(load(&store.default).unwrap().unwrap(), workspace);
-        assert_eq!(fs::read(legacy.join(WORKSPACE_FILE)).unwrap(), legacy_bytes);
-
-        let mut workspace = workspace;
-        workspace.theme = "midnight".into();
-        save(&store.directory().unwrap(), &workspace).unwrap();
-        let original = fs::read(store.default.join(WORKSPACE_FILE)).unwrap();
-        let occupied = root.join("occupied");
-        save(&occupied, &sample()).unwrap();
-        let occupied_bytes = fs::read(occupied.join(WORKSPACE_FILE)).unwrap();
-        assert!(store.relocate(&occupied).is_err());
-        assert_eq!(store.directory().unwrap(), store.default);
-        assert_eq!(
-            fs::read(occupied.join(WORKSPACE_FILE)).unwrap(),
-            occupied_bytes
-        );
-
-        let target = root.join("chosen folder 中文");
-        fs::create_dir_all(&target).unwrap();
-        // Force failure at the final settings commit after copying the workspace.
-        fs::create_dir_all(store.config.join("settings.json.tmp")).unwrap();
-        assert!(store.relocate(&target).is_err());
-        assert_eq!(store.directory().unwrap(), store.default);
-        assert_eq!(load(&target).unwrap().unwrap(), workspace);
-        assert_eq!(
-            fs::read(store.default.join(WORKSPACE_FILE)).unwrap(),
-            original
-        );
-        fs::remove_dir(store.config.join("settings.json.tmp")).unwrap();
-
-        store.relocate(&target).unwrap();
-        assert_eq!(
-            store.directory().unwrap(),
-            fs::canonicalize(&target).unwrap()
-        );
-        workspace.notes[0].body = "只写入新目录".into();
-        save(&store.directory().unwrap(), &workspace).unwrap();
-        assert_eq!(store.load().unwrap().unwrap(), workspace);
-        assert_eq!(
-            fs::read(store.default.join(WORKSPACE_FILE)).unwrap(),
-            original
-        );
-        assert_eq!(fs::read(legacy.join(WORKSPACE_FILE)).unwrap(), legacy_bytes);
-
-        fs::remove_file(target.join(WORKSPACE_FILE)).unwrap();
-        assert!(store.load().is_err());
-        fs::write(store.config.join("settings.json"), b"broken-json").unwrap();
-        assert!(store.directory().is_err());
-        assert!(store.relocate(&occupied).is_err());
-        assert_eq!(
-            fs::read(store.config.join("settings.json")).unwrap(),
-            b"broken-json"
-        );
-        fs::remove_dir_all(root).unwrap();
+    fn settings_validation_drops_stale_active_note() {
+        let directory = temporary("settings");
+        write_note(&directory, "预算.txt", "# 预算").unwrap();
+        save_settings(
+            &directory,
+            "midnight",
+            Some("预算.txt"),
+            &FormatSettings::default(),
+        )
+        .unwrap();
+        let payload = scan(&directory).unwrap();
+        assert_eq!(payload.active_id.as_deref(), Some("预算.txt"));
+        assert_eq!(payload.theme, "midnight");
+        // 主题非法被拒绝
+        assert!(save_settings(&directory, "nope", None, &FormatSettings::default()).is_err());
+        // 当前笔记文件被外部删除后，保存设置时丢弃引用
+        fs::remove_file(directory.join("预算.txt")).unwrap();
+        save_settings(
+            &directory,
+            "paper",
+            Some("预算.txt"),
+            &FormatSettings::default(),
+        )
+        .unwrap();
+        let settings: WorkspaceSettings =
+            serde_json::from_slice(&fs::read(directory.join(WORKSPACE_FILE)).unwrap()).unwrap();
+        assert_eq!(settings.active_id, None);
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
@@ -846,32 +970,36 @@ mod tests {
     }
 
     #[test]
-    fn format_settings_are_validated_and_default_to_free() {
-        let directory = temporary("format-settings");
-        let mut workspace = sample();
-        workspace.format.unit_style = "chinese".into();
-        save(&directory, &workspace).unwrap();
-        assert_eq!(load(&directory).unwrap().unwrap(), workspace);
+    fn relocate_refuses_occupied_target_and_copies_everything() {
+        let root = temporary("relocate");
+        let current = root.join("current");
+        let target = root.join("target");
+        fs::create_dir_all(current.join(RECYCLED_DIR)).unwrap();
+        fs::create_dir_all(&target).unwrap();
+        fs::write(current.join("a.txt"), "# A").unwrap();
+        fs::write(current.join(RECYCLED_DIR).join("b.txt"), "# B").unwrap();
+        save_settings(&current, "paper", None, &FormatSettings::default()).unwrap();
 
-        let mut invalid = workspace.clone();
-        invalid.format.unit_style = "traditional".into();
-        assert!(save(&directory, &invalid).is_err());
-
-        // 元数据里出现非法单位风格时拒绝读取，不静默回退。
-        let path = directory.join(WORKSPACE_FILE);
-        let meta: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
-        let mut corrupted = meta.clone();
-        corrupted["format"]["unitStyle"] = "traditional".into();
-        fs::write(&path, serde_json::to_vec(&corrupted).unwrap()).unwrap();
-        assert!(load(&directory).is_err());
-
-        // 旧文件没有 format 字段：按默认格式设置。
-        let mut legacy = meta;
-        legacy.as_object_mut().unwrap().remove("format");
-        fs::write(&path, serde_json::to_vec(&legacy).unwrap()).unwrap();
-        let loaded = load(&directory).unwrap().unwrap();
-        assert_eq!(loaded.format, FormatSettings::default());
-        assert_eq!(loaded.notes, workspace.notes);
-        fs::remove_dir_all(directory).unwrap();
+        let store = Store {
+            config: root.join("config"),
+            default: current.clone(),
+            legacy: None,
+        };
+        // 目标已有 .txt：拒绝
+        fs::write(target.join("占位.txt"), "x").unwrap();
+        assert!(store.relocate(&target).is_err());
+        fs::remove_file(target.join("占位.txt")).unwrap();
+        store.relocate(&target).unwrap();
+        assert_eq!(
+            store.directory().unwrap(),
+            fs::canonicalize(&target).unwrap()
+        );
+        assert_eq!(fs::read_to_string(target.join("a.txt")).unwrap(), "# A");
+        assert_eq!(
+            fs::read_to_string(target.join(RECYCLED_DIR).join("b.txt")).unwrap(),
+            "# B"
+        );
+        assert!(target.join(WORKSPACE_FILE).exists());
+        fs::remove_dir_all(root).unwrap();
     }
 }

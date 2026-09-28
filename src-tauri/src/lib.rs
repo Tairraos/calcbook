@@ -50,7 +50,7 @@ fn store(app: &tauri::AppHandle) -> Result<storage::Store, String> {
 }
 
 #[tauri::command]
-fn load_workspace(
+fn scan_workspace(
     app: tauri::AppHandle,
     lock: tauri::State<StoreLock>,
 ) -> Result<Option<storage::Payload>, String> {
@@ -59,13 +59,74 @@ fn load_workspace(
 }
 
 #[tauri::command]
-fn save_workspace(
+fn save_workspace_settings(
     app: tauri::AppHandle,
     lock: tauri::State<StoreLock>,
-    workspace: storage::Payload,
+    theme: String,
+    #[allow(non_snake_case)] activeId: Option<String>,
+    format: storage::FormatSettings,
 ) -> Result<(), String> {
     let _guard = lock.0.lock().map_err(|_| "笔记存储忙，请重启应用")?;
-    storage::save(&store(&app)?.directory()?, &workspace)
+    storage::save_settings(
+        &store(&app)?.directory()?,
+        &theme,
+        activeId.as_deref(),
+        &format,
+    )
+}
+
+#[tauri::command]
+fn create_note(
+    app: tauri::AppHandle,
+    lock: tauri::State<StoreLock>,
+    title: String,
+    body: String,
+) -> Result<storage::PayloadNote, String> {
+    let _guard = lock.0.lock().map_err(|_| "笔记存储忙，请重启应用")?;
+    storage::create_note(&store(&app)?.directory()?, &title, &body)
+}
+
+#[tauri::command]
+fn write_note(
+    app: tauri::AppHandle,
+    lock: tauri::State<StoreLock>,
+    #[allow(non_snake_case)] noteId: String,
+    body: String,
+) -> Result<(), String> {
+    let _guard = lock.0.lock().map_err(|_| "笔记存储忙，请重启应用")?;
+    storage::write_note(&store(&app)?.directory()?, &noteId, &body)
+}
+
+#[tauri::command]
+fn move_note(
+    app: tauri::AppHandle,
+    lock: tauri::State<StoreLock>,
+    #[allow(non_snake_case)] noteId: String,
+    #[allow(non_snake_case)] toRecycled: bool,
+) -> Result<(), String> {
+    let _guard = lock.0.lock().map_err(|_| "笔记存储忙，请重启应用")?;
+    storage::move_note(&store(&app)?.directory()?, &noteId, toRecycled)
+}
+
+#[tauri::command]
+fn delete_note(
+    app: tauri::AppHandle,
+    lock: tauri::State<StoreLock>,
+    #[allow(non_snake_case)] noteId: String,
+) -> Result<(), String> {
+    let _guard = lock.0.lock().map_err(|_| "笔记存储忙，请重启应用")?;
+    storage::delete_note(&store(&app)?.directory()?, &noteId)
+}
+
+#[tauri::command]
+fn ensure_note(
+    app: tauri::AppHandle,
+    lock: tauri::State<StoreLock>,
+    #[allow(non_snake_case)] noteId: String,
+    title: String,
+) -> Result<bool, String> {
+    let _guard = lock.0.lock().map_err(|_| "笔记存储忙，请重启应用")?;
+    storage::ensure_note(&store(&app)?.directory()?, &noteId, &title)
 }
 
 #[derive(serde::Serialize)]
@@ -147,10 +208,11 @@ fn reveal_note(
     let _guard = lock.0.lock().map_err(|_| "笔记存储忙，请重启应用")?;
     let store = store(&app)?;
     let directory = store.directory()?;
-    // 文件名来自 Rust 自己落盘的元数据（slugify 生成、落盘前校验），不接受前端路径。
-    let payload = storage::load(&directory)?.ok_or("笔记尚未保存到磁盘")?;
-    let filename = payload.filename_of(&note_id).ok_or("笔记尚未保存到磁盘")?;
-    let path = directory.join(filename);
+    // noteId 来自扫描结果（id 即文件相对路径），Rust 侧再做路径安全校验。
+    let path = storage::resolve_note_path(&directory, &note_id)?.0;
+    if !path.exists() {
+        return Err("笔记尚未保存到磁盘".into());
+    }
     app.opener()
         .reveal_item_in_dir(&path)
         .map_err(|error| format!("无法在访达中显示：{error}"))
@@ -215,13 +277,18 @@ pub fn run() {
         .manage(calculator::CalculatorLock(Mutex::new(())))
         .on_window_event(calculator::on_window_event)
         .invoke_handler(tauri::generate_handler![
-            load_workspace,
-            save_workspace,
+            scan_workspace,
+            save_workspace_settings,
             export_note,
             import_note,
             toggle_calculator,
             hide_calculator,
             calculator_state,
+            create_note,
+            write_note,
+            move_note,
+            delete_note,
+            ensure_note,
             reveal_note,
             storage_info,
             choose_storage_directory,

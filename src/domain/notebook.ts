@@ -35,7 +35,7 @@ export function createNote(id: string, now: string, title = "未命名笔记", b
   return { id, title, filename: "", body, createdAt: now, updatedAt: now, trashed: false };
 }
 
-const examples = [
+export const EXAMPLES = [
   {
     title: "周末出行计划",
     body: "# 去山野，过个慢周末\n// 两个人的短途旅行，把预算也一起记下来。\n\n交通 = 186 × 2\n住宿 = 420 × 2\n餐饮 = 240\n预算 = 交通 + 住宿 + 餐饮\n\n# 给快乐留一点余地\n每人 = 预算 / 2\n备用金：每人 × 10%\n人均预算：每人 + 10%\n\n// 数字变了，答案也会跟着变。",
@@ -50,8 +50,19 @@ const examples = [
   },
 ];
 
+// 标题改动同步到正文首行标题：文件即事实来源，标题保存在首行 `# 标题`。
+export function withHeading(body: string, title: string): string {
+  const heading = `# ${title.trim()}`;
+  const lines = body.replace(/\r\n?/g, "\n").split("\n");
+  if (lines[0]?.trim().startsWith("#")) {
+    lines[0] = heading;
+    return lines.join("\n");
+  }
+  return body.trim() ? `${heading}\n${body}` : `${heading}\n`;
+}
+
 export function createWorkspace(now: string, makeId: () => string): Workspace {
-  const notes = examples.map((example) => createNote(makeId(), now, example.title, example.body));
+  const notes = EXAMPLES.map((example) => createNote(makeId(), now, example.title, example.body));
   return {
     version: 1,
     notes,

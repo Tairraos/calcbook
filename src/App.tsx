@@ -31,6 +31,7 @@ import {
   MAX_NOTES,
   MAX_TITLE_LENGTH,
   type Note,
+  withHeading,
 } from "./domain/notebook.ts";
 import {
   CALCULATOR_INSERT_EVENT,
@@ -38,8 +39,10 @@ import {
   CALCULATOR_THEME_EVENT,
   CALCULATOR_VISIBILITY_EVENT,
   calculatorStatus,
+  createNoteFile,
   downloadText,
   enableTitleDragRegions,
+  ensureNoteFile,
   hasNativeTitlebar,
   importNoteFile,
   isDesktopApp,
@@ -121,13 +124,27 @@ export default function App() {
   }, [notice]);
 
   const newNote = useCallback(
-    (title = "未命名笔记", body = "") => {
+    async (title = "未命名笔记", body = ""): Promise<boolean> => {
       if ((workspace?.notes.length ?? 0) >= MAX_NOTES) {
         setNotice("目前最多保留 100 篇笔记（含废纸篓）。");
         return false;
       }
-      const note = createNote(crypto.randomUUID(), new Date().toISOString(), title, body);
-      update((before) => ({ ...before, notes: [note, ...before.notes], activeId: note.id }));
+      if (isDesktopApp) {
+        try {
+          const created = await createNoteFile(title, body);
+          update((before) => ({
+            ...before,
+            notes: [created, ...before.notes],
+            activeId: created.id,
+          }));
+        } catch {
+          setNotice("新建笔记失败，请重试。");
+          return false;
+        }
+      } else {
+        const note = createNote(crypto.randomUUID(), new Date().toISOString(), title, body);
+        update((before) => ({ ...before, notes: [note, ...before.notes], activeId: note.id }));
+      }
       setTrashView(false);
       setQuery("");
       resetActiveLine();
@@ -143,10 +160,17 @@ export default function App() {
     // 用户手动编辑后，格式化的应用内撤销作废
     if (patch.body !== undefined && patch.body !== formatUndoRef.current?.formatted)
       formatUndoRef.current = null;
+    // 标题保存在文件首行 `# 标题`：改标题同步正文首行
+    const synced =
+      patch.title !== undefined
+        ? { ...patch, body: withHeading(patch.body ?? selected.body, patch.title) }
+        : patch;
     update((before) => ({
       ...before,
       notes: before.notes.map((note) =>
-        note.id === selected.id ? { ...note, ...patch, updatedAt: new Date().toISOString() } : note,
+        note.id === selected.id
+          ? { ...note, ...synced, updatedAt: new Date().toISOString() }
+          : note,
       ),
     }));
   }
@@ -226,7 +250,7 @@ export default function App() {
     try {
       const imported = await importNoteFile();
       if (!imported) return;
-      if (newNote(imported.title.slice(0, MAX_TITLE_LENGTH), imported.body))
+      if (await newNote(imported.title.slice(0, MAX_TITLE_LENGTH), imported.body))
         setNotice("笔记已导入");
     } catch {
       setNotice("导入失败，请重试。");
@@ -419,7 +443,7 @@ export default function App() {
       if (helpOpen || settingsOpen) return;
       if (event.key.toLowerCase() === "n") {
         event.preventDefault();
-        newNote();
+        void newNote();
       }
       if (event.key.toLowerCase() === "k") {
         event.preventDefault();
@@ -497,7 +521,7 @@ export default function App() {
                 <Trash2 size={17} />
               </IconButton>
             ) : (
-              <IconButton title="新建笔记" onClick={() => newNote()}>
+              <IconButton title="新建笔记" onClick={() => void newNote()}>
                 <Plus size={17} />
               </IconButton>
             )}
@@ -513,6 +537,7 @@ export default function App() {
                 onClick={() => {
                   update((before) => ({ ...before, activeId: note.id }));
                   resetActiveLine();
+                  if (isDesktopApp) void ensureNoteFile(note.id, note.title);
                   if (window.innerWidth <= 760) setSidebarOpen(false);
                 }}
                 onContextMenu={(event) => {
@@ -547,7 +572,7 @@ export default function App() {
               </p>
             )}
           </div>
-          <button type="button" className="new-note-button" onClick={() => newNote()}>
+          <button type="button" className="new-note-button" onClick={() => void newNote()}>
             <Plus size={16} />
             新建笔记<span>⌘ N</span>
           </button>
@@ -787,7 +812,7 @@ export default function App() {
             <BookOpen size={38} strokeWidth={1.2} />
             <h1>{trashView ? "没有被丢下的想法" : "给思路一张白纸。"}</h1>
             <p>{trashView ? "移入废纸篓的笔记会保留在这里。" : "从一个数字，或一个想法开始。"}</p>
-            <button type="button" className="primary-button" onClick={() => newNote()}>
+            <button type="button" className="primary-button" onClick={() => void newNote()}>
               <Plus size={16} />
               新建笔记
             </button>
@@ -922,7 +947,7 @@ export default function App() {
           try {
             const body = await file.text();
             if (body.length > MAX_NOTE_LENGTH || body.includes("\0")) throw new Error("invalid");
-            const imported = newNote(
+            const imported = await newNote(
               file.name.replace(/\.[^.]+$/, "").slice(0, MAX_TITLE_LENGTH),
               parseNoteBody(body),
             );

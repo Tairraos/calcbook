@@ -1,6 +1,7 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { parseNoteBody, serializeNoteBody } from "../domain/format.ts";
-import { parseWorkspace, type Workspace } from "../domain/notebook.ts";
+import { DEFAULT_FORMAT_SETTINGS } from "../domain/formatting.ts";
+import { EXAMPLES, type Note, parseWorkspace, type Workspace } from "../domain/notebook.ts";
 
 export const STORAGE_KEY = "calcbook.workspace.v1";
 export type StorageInfo = { directory: string; defaultDirectory: string; canChoose: boolean };
@@ -68,39 +69,110 @@ export async function openProject(url: string): Promise<void> {
   else window.open(url, "_blank", "noopener,noreferrer");
 }
 
+// 桌面版：文件系统是事实来源。快照用于把 React 状态的变更翻译成
+// 写文件 / 进出废纸篓 / 物理删除三类文件操作。
+let noteSnapshot: Map<string, { body: string; trashed: boolean }> = new Map();
+
 export async function loadWorkspace(): Promise<Workspace | null> {
-  const data: unknown = isTauri()
-    ? await invoke("load_workspace")
-    : (() => {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        return raw === null ? null : JSON.parse(raw);
-      })();
-  if (data === null) return null;
-  const workspace = parseWorkspace(data);
-  // 桌面版正文来自 Numi 兼容的 .txt：导入时剥掉保存时自动追加的 “= 结果”，内存里只留源表达式。
-  return isTauri()
-    ? {
-        ...workspace,
-        notes: workspace.notes.map((note) => ({ ...note, body: parseNoteBody(note.body) })),
+  if (isTauri()) {
+    const payload: unknown = await invoke("scan_workspace");
+    if (payload === null) {
+      // 首次启动：生成示例笔记（文件名由 Rust 唯一化落盘）
+      const notes: unknown[] = [];
+      for (const example of EXAMPLES) {
+        notes.push(await invoke("create_note", { title: example.title, body: example.body }));
       }
-    : workspace;
+      const created = parseWorkspace({
+        version: 1,
+        theme: "paper",
+        activeId: null,
+        format: DEFAULT_FORMAT_SETTINGS,
+        notes,
+      });
+      noteSnapshot = new Map(
+        created.notes.map((note) => [note.id, { body: note.body, trashed: note.trashed }]),
+      );
+      return {
+        ...created,
+        notes: created.notes.map((note) => ({ ...note, body: parseNoteBody(note.body) })),
+      };
+    }
+    const workspace = parseWorkspace(payload);
+    noteSnapshot = new Map(
+      workspace.notes.map((note) => [note.id, { body: note.body, trashed: note.trashed }]),
+    );
+    // 正文来自 Numi 兼容的 .txt：导入时剥掉保存时自动追加的 "= 结果"，内存里只留源表达式。
+    return {
+      ...workspace,
+      notes: workspace.notes.map((note) => ({ ...note, body: parseNoteBody(note.body) })),
+    };
+  }
+  const raw = localStorage.getItem(STORAGE_KEY);
+  return raw === null ? null : parseWorkspace(JSON.parse(raw));
 }
 
 export async function saveWorkspace(workspace: Workspace): Promise<void> {
   const validated = parseWorkspace(workspace);
   if (isTauri()) {
-    await invoke("save_workspace", {
-      workspace: {
-        ...validated,
-        // 保存时按 Numi 格式把计算结果写回行尾，文件可直接用 Numi 打开。
-        notes: validated.notes.map((note) => ({ ...note, body: serializeNoteBody(note.body) })),
-      },
+    // 设置（主题/当前笔记/格式）每次保存；笔记按快照差异落盘
+    await invoke("save_workspace_settings", {
+      theme: validated.theme,
+      activeId: validated.activeId,
+      format: validated.format,
     });
+    for (const note of validated.notes) {
+      const previous = noteSnapshot.get(note.id);
+      const serialized = serializeNoteBody(note.body);
+      if (!previous) {
+        await invoke("write_note", { noteId: note.id, body: serialized });
+      } else {
+        if (previous.body !== note.body)
+          await invoke("write_note", { noteId: note.id, body: serialized });
+        if (previous.trashed !== note.trashed)
+          await invoke("move_note", { noteId: note.id, toRecycled: note.trashed });
+      }
+    }
+    // 从状态里消失的笔记 = 永久删除，物理删除对应文件
+    for (const id of noteSnapshot.keys()) {
+      if (!validated.notes.some((note) => note.id === id))
+        await invoke("delete_note", { noteId: id });
+    }
+    noteSnapshot = new Map(
+      validated.notes.map((note) => [note.id, { body: note.body, trashed: note.trashed }]),
+    );
     return;
   }
   const previous = localStorage.getItem(STORAGE_KEY);
   if (previous !== null) parseWorkspace(JSON.parse(previous));
   localStorage.setItem(STORAGE_KEY, JSON.stringify(validated));
+}
+
+// 新建笔记：桌面版由 Rust 生成唯一文件名并落盘。
+export async function createNoteFile(title: string, body: string): Promise<Note> {
+  const payload = await invoke<{
+    id: string;
+    title: string;
+    body: string;
+    createdAt: string;
+    updatedAt: string;
+  }>("create_note", { title, body });
+  const note: Note = {
+    id: payload.id,
+    filename: "",
+    title: payload.title,
+    body: parseNoteBody(payload.body),
+    createdAt: payload.createdAt,
+    updatedAt: payload.updatedAt,
+    trashed: false,
+  };
+  noteSnapshot.set(note.id, { body: note.body, trashed: false });
+  return note;
+}
+
+// 运行期间文件被外部删除时：点击笔记按已知信息（文件名与首行标题）重建。
+export async function ensureNoteFile(noteId: string, title: string): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("ensure_note", { noteId, title });
 }
 
 export type ImportedNote = { title: string; body: string };
