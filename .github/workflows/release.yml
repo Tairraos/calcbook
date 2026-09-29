@@ -1,6 +1,9 @@
 name: Release
-# 触发：推送 v 开头的 tag（如 v0.6.13）→ 三平台构建并自动发布 GitHub Release。
+# 触发：推送 v 开头的 tag（如 v1.0.0）→ 三平台构建并自动发布 GitHub Release。
 # tag 里的版本必须与 package.json / tauri.conf.json / Cargo.toml 一致，否则流程失败。
+#
+# 构建与上传拆成独立步骤：构建失败时把日志尾部写成 check-run 注解，
+# 没有仓库管理员权限（无法下载原始日志）时也能看到真实报错。
 on:
   push:
     tags: ["v*"]
@@ -21,6 +24,14 @@ jobs:
             echo "tag 是 v$tag，package.json 是 $pkg；请把三处版本号改一致后重新打 tag。"
             exit 1
           fi
+      - name: 预建 Release（已存在则跳过，保留既有说明文字）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || \
+            gh release create "$GITHUB_REF_NAME" \
+              --title "Calcbook $GITHUB_REF_NAME" \
+              --notes "安装包未签名：macOS 首次打开请右键选择「打开」。"
 
   publish:
     needs: guard
@@ -58,16 +69,47 @@ jobs:
         if: matrix.platform == 'ubuntu-22.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf libfuse2
       - run: pnpm install --frozen-lockfile
-      - name: 构建并发布 Release
-        uses: tauri-apps/tauri-action@v0
+      - name: 构建安装包
+        id: build
+        shell: bash
+        run: |
+          set -o pipefail
+          pnpm tauri build ${{ matrix.args }} 2>&1 | tee build.log
+      - name: 构建失败时把报错写进注解
+        if: failure() && steps.build.outcome == 'failure'
+        shell: bash
+        run: |
+          LOG=build.log
+          if [ -f "$LOG" ]; then
+            grep -nE "^error|error\[|error:|Error:|cannot |failed|not found|No such|失败|错误|Traceback" "$LOG" | tail -n 10 > errors.txt || true
+            [ -s errors.txt ] || tail -n 10 "$LOG" > errors.txt
+          else
+            echo "未生成 build.log（构建未开始或输出未捕获）" > errors.txt
+          fi
+          while IFS= read -r line; do echo "::error title=Build failure::$line"; done < errors.txt
+          { echo "### 构建失败：日志尾部"; echo '```'; tail -n 120 "$LOG" 2>/dev/null; echo '```'; } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          exit 1
+      - name: 上传安装包到 Release
+        if: success()
+        shell: bash
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: Calcbook ${{ github.ref_name }}
-          releaseBody: 详见下方 Assets；安装包未签名，macOS 首次打开请右键「打开」。
-          releaseDraft: false
-          prerelease: false
-          args: ${{ matrix.args }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          find target/release/bundle -type f \( \
+            -name '*.dmg' -o -name '*.msi' -o -name '*.exe' -o \
+            -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' -o \
+            -name '*.tar.gz' -o -name '*.sig' -o -name '*.zip' \) -print > files.txt
+          count=$(wc -l < files.txt | tr -d ' ')
+          echo "找到 $count 个安装包："
+          sed 's/^/  /' files.txt
+          if [ "$count" -eq 0 ]; then
+            echo "构建成功但没有找到安装包，检查 bundle.targets 配置。"
+            exit 1
+          fi
+          find target/release/bundle -type f \( \
+            -name '*.dmg' -o -name '*.msi' -o -name '*.exe' -o \
+            -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' -o \
+            -name '*.tar.gz' -o -name '*.sig' -o -name '*.zip' \) -print0 \
+            | xargs -0 gh release upload "$GITHUB_REF_NAME" --clobber
