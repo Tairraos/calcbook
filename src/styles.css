@@ -484,15 +484,13 @@ kbd {
   border-color: var(--sage-border);
 }
 .note-heading {
-  padding: 20px 38px 18px;
+  padding: 10px 38px 10px;
   flex-shrink: 0;
 }
 .note-kicker {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 15px;
 }
 .eyebrow {
   font-size: 10px;
@@ -528,8 +526,6 @@ kbd {
 .note-meta {
   display: flex;
   align-items: center;
-  gap: 8px;
-  margin-top: 12px;
   color: var(--muted);
   font-size: 11px;
   white-space: nowrap;
@@ -562,7 +558,7 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 13px 22px 13px 51px;
+  padding: 10px 25px 10px 50px;
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   color: var(--muted);
@@ -1685,12 +1681,29 @@ fieldset.settings-section {
   border: 0;
 }
 /* 布局不随窗口尺寸响应式变化：基础样式在任意窗口大小保持一致。 */
+/* 可滚动区域统一平滑滚动：作用于程序化滚动与键盘翻页；鼠标滚轮的惯性平滑由系统控制。 */
+.note-list,
+.editor-scroll,
+.calc-history-sidebar,
+.dialog,
+.settings-body,
+.help-tabpanel {
+  scroll-behavior: smooth;
+}
 @media (prefers-reduced-motion: reduce) {
   button {
     transition: none;
   }
   .sidebar {
     transition: none;
+  }
+  .note-list,
+  .editor-scroll,
+  .calc-history-sidebar,
+  .dialog,
+  .settings-body,
+  .help-tabpanel {
+    scroll-behavior: auto;
   }
 }
 .help-error-word {
