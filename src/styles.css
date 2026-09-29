@@ -130,7 +130,7 @@ input::placeholder {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin: 0 8px 20px 10px;
+  margin: 0 8px 10px 10px;
 }
 .brand-logo {
   display: block;
@@ -190,8 +190,8 @@ input::placeholder {
   display: flex;
   align-items: center;
   gap: 7px;
-  height: 34px;
-  margin: 0 6px 19px;
+  height: 30px;
+  margin: 0 6px 10px;
   padding: 0 9px;
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -250,7 +250,7 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 19px 6px 9px 10px;
+  padding: 0 6px;
   color: var(--muted);
   font-size: 11px;
   letter-spacing: 0.6px;
@@ -312,11 +312,11 @@ kbd {
   flex-direction: column;
   text-align: left;
   width: 100%;
-  padding: 15px 12px 13px;
-  margin-bottom: 6px;
+  padding: 10px;
+  margin-bottom: 5px;
   border: 1px solid transparent;
   border-radius: 7px;
-  gap: 9px;
+  gap: 2px;
 }
 .note-card:hover {
   background: var(--hover);
@@ -370,7 +370,7 @@ kbd {
 }
 .sidebar-bottom {
   border-top: 1px solid var(--border);
-  padding: 11px 5px 0;
+  padding: 2px 5px 0;
 }
 .settings-entry {
   display: flex;
@@ -414,7 +414,7 @@ kbd {
 }
 .topbar {
   display: flex;
-  height: 62px;
+  height: 50px;
   align-items: center;
   justify-content: space-between;
   padding: 0 20px 0 22px;

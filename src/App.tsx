@@ -9,9 +9,9 @@ import {
   CircleHelp,
   FileText,
   FolderOpen,
-  Menu,
   Moon,
   PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Search,
   Settings,
@@ -619,10 +619,7 @@ export default function App() {
                     .find((line) => line.trim())
                     ?.replace(/^#+\s*/, "") || "一张白纸，等一个想法"}
                 </span>
-                <span className="note-date">
-                  {date(note.updatedAt)}
-                  <span>本地笔记</span>
-                </span>
+                <span className="note-date">{date(note.updatedAt)}</span>
               </button>
             ))}
             {visibleNotes.length === 0 && (
@@ -665,7 +662,7 @@ export default function App() {
               aria-expanded={sidebarOpen}
               onClick={() => setSidebarOpen(!sidebarOpen)}
             >
-              {sidebarOpen ? <PanelLeftClose size={17} /> : <Menu size={18} />}
+              {sidebarOpen ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}
             </IconButton>
             <BookOpen size={15} />
             <span>{trashView ? "废纸篓" : "我的笔记"}</span>
@@ -720,10 +717,14 @@ export default function App() {
           <>
             <div className="note-heading">
               <div className="note-kicker">
-                <span className="eyebrow">
-                  <span className="tiny-rule" />
-                  THINK IT. NOTE IT. SOLVE IT.
-                </span>
+                <div className="note-meta">
+                  <span className="note-type">
+                    <FileText size={12} />
+                    {date(selected.updatedAt)}更新
+                  </span>
+                  <span className="note-saved-dot" />
+                  <span>边想，边记，边算</span>
+                </div>
                 <div className="note-tools">
                   <IconButton title="语法速查" onClick={() => setHelpOpen(true)}>
                     <CircleHelp size={16} />
@@ -783,16 +784,6 @@ export default function App() {
                 readOnly={selected.trashed}
                 onChange={(event) => patchNote({ title: event.target.value })}
               />
-              <div className="note-meta">
-                <span className="note-type">
-                  <FileText size={12} />
-                  计算笔记
-                </span>
-                <span className="meta-divider">·</span>
-                <span>{date(selected.updatedAt)}更新</span>
-                <span className="note-saved-dot" />
-                <span>边想，边记，边算。</span>
-              </div>
             </div>
             {selected.trashed && (
               <div className="trash-banner">
