@@ -97,10 +97,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          find target/release/bundle -type f \( \
+          # 产物路径随构建方式不同：无 --target 时在 target/release/bundle，
+          # 带 --target <triple> 时在 target/<triple>/release/bundle，统一用 -path 匹配。
+          find target -path '*/release/bundle/*' -type f \( \
             -name '*.dmg' -o -name '*.msi' -o -name '*.exe' -o \
             -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' -o \
-            -name '*.tar.gz' -o -name '*.sig' -o -name '*.zip' \) -print > files.txt
+            -name '*.sig' -o -name '*.zip' \) -print > files.txt
+          # .app.tar.gz 只取 macOS 打包目录；deb 暂存目录里的 control/data.tar.gz 是中间产物，不能上传
+          find target -path '*/release/bundle/macos/*' -type f -name '*.tar.gz' -print >> files.txt
           count=$(wc -l < files.txt | tr -d ' ')
           echo "找到 $count 个安装包："
           sed 's/^/  /' files.txt
@@ -108,8 +112,10 @@ jobs:
             echo "构建成功但没有找到安装包，检查 bundle.targets 配置。"
             exit 1
           fi
-          find target/release/bundle -type f \( \
-            -name '*.dmg' -o -name '*.msi' -o -name '*.exe' -o \
-            -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' -o \
-            -name '*.tar.gz' -o -name '*.sig' -o -name '*.zip' \) -print0 \
-            | xargs -0 gh release upload "$GITHUB_REF_NAME" --clobber
+          # 清掉历史误传的打包中间产物（已存在才删，失败不影响上传）
+          for stray in control.tar.gz data.tar.gz; do
+            gh release delete-asset "$GITHUB_REF_NAME" "$stray" --yes >/dev/null 2>&1 || true
+          done
+          while IFS= read -r file; do
+            gh release upload "$GITHUB_REF_NAME" "$file" --clobber
+          done < files.txt
