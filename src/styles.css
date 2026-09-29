@@ -110,35 +110,44 @@ input::placeholder {
     visibility 0s 220ms;
 }
 .app-shell.has-sidebar .sidebar {
-  width: 260px;
+  width: 230px;
   visibility: visible;
   transition:
     width 220ms ease,
     visibility 0s;
 }
 .sidebar-inner {
-  width: 260px;
+  width: 230px;
   height: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 26px 16px 14px;
+  padding: 26px 10px 14px;
   background: var(--sidebar);
   border-right: 1px solid var(--border);
 }
 .brand {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin: 0 8px 32px;
+  gap: 8px;
+  margin: 0 8px 20px 10px;
 }
-.brand > span {
-  font-size: 25px;
-  font-weight: 650;
-  letter-spacing: -1.2px;
+.brand-logo {
+  display: block;
+  width: 135px;
+  height: 25px;
 }
-.brand-period {
-  color: var(--green);
+.brand-light {
+  display: block;
+}
+.brand-dark {
+  display: none;
+}
+[data-theme="dark"] .brand-light {
+  display: none;
+}
+[data-theme="dark"] .brand-dark {
+  display: block;
 }
 /* Overlay 标题栏下，侧栏内容整体从红绿灯下方开始，字标左对齐不再避让。 */
 .native-titlebar .sidebar-inner {
@@ -246,11 +255,41 @@ kbd {
   font-size: 11px;
   letter-spacing: 0.6px;
 }
+/* 「我的笔记 / 废纸篓」两个 tab 切换下方文件列表；当前项用墨色加重表达。 */
+.notebook-tabs {
+  display: flex;
+  gap: 2px;
+}
+.notebook-tabs > button {
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--muted);
+}
+.notebook-tabs > button:hover {
+  color: var(--ink);
+  background: var(--hover);
+}
+.notebook-tabs > button.is-active {
+  color: var(--green);
+  border-color: var(--sage-border);
+  background: var(--sage);
+  font-weight: 600;
+}
+.heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+.trash-count {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
 .note-list {
   flex: 1;
   min-height: 50px;
   overflow: auto;
-  margin: 0 -3px 0 -1px;
+  margin: 0 -3px 8px -1px;
   padding: 1px;
   scrollbar-width: thin;
 }
@@ -329,58 +368,16 @@ kbd {
   text-align: center;
   font-size: 12px;
 }
-.new-note-button {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  text-align: left;
-  border: 1px dashed var(--strong-border);
-  border-radius: 6px;
-  padding: 10px 12px;
-  margin: 10px 3px 20px;
-  font-size: 12px;
-  color: var(--muted);
-}
-.new-note-button > span {
-  margin-left: auto;
-  font-size: 10px;
-}
-.new-note-button:hover {
-  background: var(--sage);
-  color: var(--green);
-}
 .sidebar-bottom {
   border-top: 1px solid var(--border);
   padding: 11px 5px 0;
-}
-.sidebar-bottom > button {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  padding: 9px 6px;
-  width: 100%;
-  border-radius: 5px;
-  text-align: left;
-  font-size: 12px;
-  color: var(--muted);
-}
-.sidebar-bottom > button:hover,
-.sidebar-bottom > button.is-active {
-  background: var(--hover);
-  color: var(--green);
-}
-.sidebar-bottom > button > :last-child:not(:first-child) {
-  margin-left: auto;
 }
 .settings-entry {
   display: flex;
   align-items: center;
   gap: 2px;
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--border);
 }
-.settings-entry > button {
+.settings-entry > button:not(.theme-toggle) {
   display: flex;
   align-items: center;
   gap: 9px;
@@ -420,7 +417,7 @@ kbd {
   height: 62px;
   align-items: center;
   justify-content: space-between;
-  padding: 0 25px;
+  padding: 0 20px 0 22px;
   gap: 12px;
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
@@ -487,7 +484,7 @@ kbd {
   border-color: var(--sage-border);
 }
 .note-heading {
-  padding: 37px 38px 29px;
+  padding: 20px 38px 18px;
   flex-shrink: 0;
 }
 .note-kicker {
@@ -679,7 +676,6 @@ kbd {
 }
 .editor-input:focus-visible {
   outline: none;
-  box-shadow: inset 0 0 0 1px var(--sage-border);
 }
 .editor-input::selection {
   color: transparent;
@@ -725,18 +721,18 @@ kbd {
 .line-result:hover {
   background: var(--sage);
 }
-[data-theme="midnight"] .line-result {
+[data-theme="dark"] .line-result {
   padding-inline: 1px;
 }
-[data-theme="midnight"] .line-result > span {
+[data-theme="dark"] .line-result > span {
   padding-inline: 6px;
   border-radius: 7px;
   line-height: 20px;
 }
-[data-theme="midnight"] .line-result:hover {
+[data-theme="dark"] .line-result:hover {
   background: transparent;
 }
-[data-theme="midnight"] .line-result:is(:hover, :focus-visible) > span {
+[data-theme="dark"] .line-result:is(:hover, :focus-visible) > span {
   background: var(--green);
   color: var(--inverse);
 }
@@ -775,7 +771,7 @@ kbd {
   display: block;
 }
 .editor-bottom {
-  padding: 17px 38px 20px;
+  padding: 13px 38px 16px;
   flex-shrink: 0;
 }
 .syntax-hint {
@@ -807,18 +803,6 @@ kbd {
 }
 .hint-link svg {
   transform: rotate(135deg);
-}
-.page-stamp {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  justify-content: center;
-  color: var(--muted);
-  opacity: 0.7;
-  margin-top: 36px;
-  font-size: 10px;
-  font-family: Georgia, "Times New Roman", serif;
-  font-style: italic;
 }
 .statusbar {
   display: flex;
@@ -865,15 +849,39 @@ kbd {
   top: 0;
   left: 0;
   right: 0;
-  height: 38px;
+  height: 40px;
   z-index: 1;
 }
-.calc-history-toggle {
-  /* 红绿灯右侧：与标题栏同行。 */
+.calculator-inner {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+}
+.calc-main {
+  /* 固定 300px：展开最近计算时窗口加宽，计算器主体面积不变。 */
+  position: relative;
+  width: 300px;
+  flex: none;
+  padding: 40px 16px 18px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.calc-header {
+  /* 顶部 40px 即拖拽区；按钮右齐锚定主体列，展开侧栏（窗口加宽）时不移动。 */
   position: absolute;
-  top: 9px;
-  left: 84px;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
   z-index: 2;
+}
+.calc-history-toggle {
   gap: 4px;
   padding: 4px 9px;
   height: 24px;
@@ -886,21 +894,6 @@ kbd {
   background: var(--sage);
   color: var(--green);
   border-color: var(--sage-border);
-}
-.calculator-inner {
-  display: flex;
-  flex: 1;
-  min-height: 0;
-  align-items: stretch;
-}
-.calc-main {
-  /* 固定 300px：展开最近计算时窗口加宽，计算器主体面积不变。 */
-  width: 300px;
-  flex: none;
-  padding: 44px 16px 18px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
 }
 .calc-history-sidebar {
   width: 300px;
@@ -995,7 +988,7 @@ kbd {
   border: 1px solid var(--border);
   background: var(--key);
   border-radius: 7px;
-  height: 42px;
+  height: 41px;
   font-size: 17px;
   font-weight: 450;
   box-shadow: 0 1px 1px #00000003;
@@ -1029,13 +1022,14 @@ kbd {
   background: var(--green-hover);
   border-color: var(--green-hover);
 }
+/* 高度固定：清空按钮只在有历史时渲染，若行高随内容变化标题会上下移动。 */
 .calc-history-heading {
   border-top: 1px solid var(--border);
   padding-top: 16px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 36px;
+  height: 41px;
   color: var(--muted);
   font-size: 11px;
 }
@@ -1043,6 +1037,22 @@ kbd {
   display: flex;
   gap: 6px;
   align-items: center;
+}
+/* 文字「清空」按钮：与「历史」开关同款的小边框按钮，边框常显、无图标。 */
+.history-clear {
+  height: 24px;
+  padding: 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--sidebar);
+  font-size: 12px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.history-clear:hover {
+  color: var(--green);
+  border-color: var(--sage-border);
+  background: var(--sage);
 }
 .history-empty {
   min-height: 80px;
@@ -1558,10 +1568,25 @@ fieldset.settings-section {
 .help-tabpanel td:nth-child(2) {
   min-width: 6.5em;
 }
-/* 单位清单列：已按「；」断行，过长的一项再按空格折行，列宽不再被撑满 */
+/* 单位清单列：按「；」拆行，每行独立芯片（同宽对齐），分号不显示，列宽不再被撑满 */
 .help-tabpanel td.term-lines {
   white-space: normal;
-  line-height: 1.7;
+}
+.help-tabpanel td.term-lines code {
+  display: block;
+  background: none;
+  padding: 0;
+  border-radius: 0;
+}
+.help-tabpanel td.term-lines .term-line {
+  display: block;
+  width: fit-content;
+  background: var(--hover);
+  padding: 2px 5px;
+  border-radius: 4px;
+}
+.help-tabpanel td.term-lines .term-line + .term-line {
+  margin-top: 3px;
 }
 .help-tabpanel td code,
 .help-tabpanel th code {
@@ -1659,193 +1684,7 @@ fieldset.settings-section {
   white-space: nowrap;
   border: 0;
 }
-.sidebar-scrim {
-  display: none;
-}
-
-@media (min-width: 1500px) {
-  .note-heading {
-    padding-left: 55px;
-    padding-right: 55px;
-  }
-  .editor-scroll {
-    margin-left: 43px;
-    margin-right: 43px;
-  }
-  .editor-grid {
-    grid-template-columns: 42px minmax(0, 1fr) 165px;
-  }
-  .editor-bottom {
-    padding-left: 55px;
-  }
-}
-@media (max-width: 1150px) {
-  .app-shell.has-sidebar .sidebar {
-    width: 230px;
-  }
-  .sidebar-inner {
-    width: 230px;
-    padding-left: 10px;
-    padding-right: 10px;
-  }
-  .brand {
-    gap: 8px;
-    margin-left: 10px;
-  }
-  .brand > span {
-    font-size: 23px;
-  }
-  .topbar {
-    padding-left: 22px;
-    padding-right: 20px;
-  }
-}
-@media (max-width: 760px) {
-  /* 固定抽屉不参与列宽（Chromium 会让 fixed 子元素按内容撑大 auto 列），第一列固定 0。 */
-  .app-shell {
-    grid-template-columns: 0px minmax(0, 1fr) auto;
-  }
-  /* 窄窗口侧栏是顶栏下方的固定抽屉，translateX 滑入滑出；计算器仍占右侧一列。 */
-  .sidebar,
-  .app-shell.has-sidebar .sidebar {
-    position: fixed;
-    inset: 56px auto 0 0;
-    width: 240px;
-    z-index: 12;
-    visibility: visible;
-    transform: translateX(-100%);
-    transition: transform 220ms ease;
-    box-shadow: 20px 0 60px #0002;
-  }
-  .app-shell.has-sidebar .sidebar {
-    transform: none;
-  }
-  .sidebar-inner {
-    width: 240px;
-    padding-top: 24px;
-  }
-  .sidebar-scrim {
-    display: block;
-    position: fixed;
-    inset: 56px 0 0 0;
-    background: #00000044;
-    z-index: 11;
-    cursor: default;
-  }
-  .topbar {
-    padding: 0 14px;
-    height: 56px;
-  }
-  .breadcrumb > svg,
-  .breadcrumb > span {
-    display: none;
-  }
-  .breadcrumb {
-    gap: 7px;
-  }
-  .topbar-actions {
-    gap: 7px;
-  }
-  .note-heading {
-    padding: 28px 23px 24px;
-  }
-  .note-title {
-    font-size: 22px;
-  }
-  .eyebrow {
-    font-size: 9px;
-    letter-spacing: 1px;
-  }
-  .note-kicker {
-    margin-bottom: 10px;
-  }
-  .note-meta {
-    font-size: 10px;
-    gap: 6px;
-  }
-  .editor-scroll {
-    margin: 0 12px;
-  }
-  .editor-columns-label {
-    padding-left: 40px;
-    padding-right: 15px;
-  }
-  .editor-grid {
-    grid-template-columns: 29px minmax(0, 1fr) 112px;
-  }
-  .line-result {
-    gap: 2px;
-    padding-right: 3px;
-  }
-  [data-theme="midnight"] .line-result {
-    padding-right: 0;
-  }
-  [data-theme="midnight"] .line-result > span {
-    padding-right: 3px;
-  }
-  .editor-results {
-    padding-left: 3px;
-  }
-  .editor-bottom {
-    padding: 14px 23px 18px;
-  }
-  .syntax-hint {
-    font-size: 10px;
-    gap: 5px;
-  }
-  .page-stamp {
-    margin-top: 24px;
-    font-size: 9px;
-  }
-  .statusbar {
-    padding: 0 15px;
-    font-size: 9px;
-  }
-  .help-dialog {
-    padding: 22px;
-  }
-  .settings-dialog {
-    padding: 20px;
-  }
-  .format-toggles {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .format-radio-groups {
-    grid-template-columns: 1fr;
-  }
-  .about-section {
-    grid-template-columns: 1fr;
-  }
-  .help-heading h2 {
-    font-size: 20px;
-  }
-  .syntax-examples button {
-    grid-template-columns: 70px 1fr;
-    gap: 5px;
-  }
-  .syntax-examples strong {
-    display: none;
-  }
-}
-@media (max-height: 700px) {
-  .note-heading {
-    padding-top: 20px;
-    padding-bottom: 18px;
-  }
-  .page-stamp {
-    display: none;
-  }
-  .editor-bottom {
-    padding-top: 13px;
-    padding-bottom: 16px;
-  }
-  .brand {
-    margin-bottom: 20px;
-  }
-  .calc-key {
-    height: 41px;
-  }
-}
+/* 布局不随窗口尺寸响应式变化：基础样式在任意窗口大小保持一致。 */
 @media (prefers-reduced-motion: reduce) {
   button {
     transition: none;

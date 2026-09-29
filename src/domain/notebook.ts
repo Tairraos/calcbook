@@ -3,15 +3,16 @@ import { DEFAULT_FORMAT_SETTINGS, type FormatSettings, parseFormatSettings } fro
 export const MAX_NOTES = 100;
 export const MAX_NOTE_LENGTH = 100_000;
 export const MAX_TITLE_LENGTH = 120;
-export const THEME_IDS = ["paper", "midnight"] as const;
+export const THEME_IDS = ["light", "dark"] as const;
 export type Theme = (typeof THEME_IDS)[number];
+// 0.6.10 及以前的 paper/midnight 与更早的六套主题，读取时统一迁移到 light/dark。
 const LEGACY_THEMES: Record<string, Theme> = {
-  light: "paper",
-  sand: "paper",
-  mist: "paper",
-  dark: "midnight",
-  forest: "midnight",
-  graphite: "midnight",
+  paper: "light",
+  sand: "light",
+  mist: "light",
+  midnight: "dark",
+  forest: "dark",
+  graphite: "dark",
 };
 export type Note = {
   id: string;
@@ -67,7 +68,7 @@ export function createWorkspace(now: string, makeId: () => string): Workspace {
     version: 1,
     notes,
     activeId: notes[0].id,
-    theme: "paper",
+    theme: "light",
     format: DEFAULT_FORMAT_SETTINGS,
   };
 }

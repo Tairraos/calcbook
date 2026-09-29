@@ -397,7 +397,7 @@ fn read_workspace_settings(directory: &Path) -> Result<WorkspaceSettings, String
             return Ok(WorkspaceSettings {
                 version: 1,
                 active_id: None,
-                theme: "paper".into(),
+                theme: "light".into(),
                 format: FormatSettings::default(),
             });
         }
@@ -648,7 +648,54 @@ pub struct Store {
     pub legacy: Option<PathBuf>,
 }
 
+/// 上次关闭时的主窗尺寸（逻辑单位），存默认数据目录 ~/.calcbook/window.json。
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WindowSize {
+    pub width: f64,
+    pub height: f64,
+}
+
+/// 与 tauri.conf.json 的 minWidth/minHeight 保持一致。
+pub const MIN_WINDOW_WIDTH: f64 = 800.0;
+pub const MIN_WINDOW_HEIGHT: f64 = 640.0;
+
+impl WindowSize {
+    /// 钳制到主窗最小尺寸，恢复时不会比最小窗口还小。
+    pub fn clamped(self) -> Self {
+        Self {
+            width: self.width.max(MIN_WINDOW_WIDTH),
+            height: self.height.max(MIN_WINDOW_HEIGHT),
+        }
+    }
+}
+
 impl Store {
+    /// 读取上次记录的窗口尺寸；文件缺失或损坏时返回 None（回退最小尺寸）。
+    pub fn window_size(&self) -> Option<WindowSize> {
+        let bytes = fs::read(self.default.join("window.json")).ok()?;
+        let size: WindowSize = serde_json::from_slice(&bytes).ok()?;
+        (size.width.is_finite() && size.height.is_finite()).then_some(size)
+    }
+
+    /// 记录窗口尺寸：先钳制到最小尺寸，再按既有模式原子写入。
+    pub fn save_window_size(&self, size: WindowSize) -> Result<(), String> {
+        let size = size.clamped();
+        fs::create_dir_all(&self.default).map_err(|error| format!("无法创建数据目录：{error}"))?;
+        let bytes = serde_json::to_vec_pretty(&size)
+            .map_err(|error| format!("无法序列化窗口尺寸：{error}"))?;
+        let temporary = self.default.join("window.json.tmp");
+        let mut file =
+            fs::File::create(&temporary).map_err(|error| format!("无法暂存窗口尺寸：{error}"))?;
+        file.write_all(&bytes)
+            .and_then(|()| file.sync_all())
+            .map_err(|error| format!("窗口尺寸未保存：{error}"))?;
+        drop(file);
+        fs::rename(temporary, self.default.join("window.json"))
+            .map_err(|error| format!("窗口尺寸未保存：{error}"))?;
+        Ok(())
+    }
+
     fn settings(&self) -> Result<Settings, String> {
         let path = self.config.join("settings.json");
         let bytes = match fs::read(path) {
@@ -789,6 +836,49 @@ mod tests {
     use super::*;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    #[test]
+    fn window_size_round_trips_clamps_and_rejects_garbage() {
+        let root = temporary("window-size");
+        let store = Store {
+            config: root.join("config"),
+            default: root.join("data"),
+            legacy: None,
+        };
+        // 无记录时回退 None（启动侧再用最小尺寸兜底）
+        assert_eq!(store.window_size(), None);
+        // 正常往返
+        store
+            .save_window_size(WindowSize {
+                width: 1280.0,
+                height: 820.0,
+            })
+            .unwrap();
+        assert_eq!(
+            store.window_size(),
+            Some(WindowSize {
+                width: 1280.0,
+                height: 820.0,
+            })
+        );
+        // 保存时钳制到最小尺寸
+        store
+            .save_window_size(WindowSize {
+                width: 500.0,
+                height: 400.0,
+            })
+            .unwrap();
+        assert_eq!(
+            store.window_size(),
+            Some(WindowSize {
+                width: MIN_WINDOW_WIDTH,
+                height: MIN_WINDOW_HEIGHT,
+            })
+        );
+        // 损坏文件视为无记录，不阻塞启动
+        fs::write(store.default.join("window.json"), "not json").unwrap();
+        assert_eq!(store.window_size(), None);
+    }
+
     fn temporary(name: &str) -> PathBuf {
         let unique = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -893,7 +983,7 @@ mod tests {
                 }
             ],
             "activeId": "note-1",
-            "theme": "midnight",
+            "theme": "dark",
             "format": {
                 "operatorSpace": true,
                 "commentSpace": true,
@@ -908,7 +998,7 @@ mod tests {
         .unwrap();
 
         let payload = scan(&directory).unwrap();
-        assert_eq!(payload.theme, "midnight");
+        assert_eq!(payload.theme, "dark");
         assert_eq!(payload.notes.len(), 2);
         assert_eq!(payload.notes[0].id, "人体消耗计算.txt");
         assert_eq!(
@@ -932,21 +1022,21 @@ mod tests {
         write_note(&directory, "预算.txt", "# 预算").unwrap();
         save_settings(
             &directory,
-            "midnight",
+            "dark",
             Some("预算.txt"),
             &FormatSettings::default(),
         )
         .unwrap();
         let payload = scan(&directory).unwrap();
         assert_eq!(payload.active_id.as_deref(), Some("预算.txt"));
-        assert_eq!(payload.theme, "midnight");
+        assert_eq!(payload.theme, "dark");
         // 主题非法被拒绝
         assert!(save_settings(&directory, "nope", None, &FormatSettings::default()).is_err());
         // 当前笔记文件被外部删除后，保存设置时丢弃引用
         fs::remove_file(directory.join("预算.txt")).unwrap();
         save_settings(
             &directory,
-            "paper",
+            "light",
             Some("预算.txt"),
             &FormatSettings::default(),
         )
@@ -978,7 +1068,7 @@ mod tests {
         fs::create_dir_all(&target).unwrap();
         fs::write(current.join("a.txt"), "# A").unwrap();
         fs::write(current.join(RECYCLED_DIR).join("b.txt"), "# B").unwrap();
-        save_settings(&current, "paper", None, &FormatSettings::default()).unwrap();
+        save_settings(&current, "light", None, &FormatSettings::default()).unwrap();
 
         let store = Store {
             config: root.join("config"),

@@ -31,20 +31,20 @@ test("scopes do not leak and long input is bounded", () => {
   assert.equal(calculateInput("1+".repeat(600)).ok, false);
   assert.equal(calculateInput(`${"(".repeat(40)}1${")".repeat(40)}`).ok, false);
 });
-test("calculator display rounds to three places and switches at ten integer digits", () => {
+test("calculator display rounds to four places and switches at ten integer digits", () => {
   for (const [source, display] of [
-    ["1/3", "0.333"],
-    ["2/3", "0.667"],
-    ["-2/3", "-0.667"],
-    ["-0.0004", "0"],
-    ["1.2345", "1.235"],
-    ["9999999999.9994", "9,999,999,999.999"],
+    ["1/3", "0.3333"],
+    ["2/3", "0.6667"],
+    ["-2/3", "-0.6667"],
+    ["-0.0004", "-0.0004"],
+    ["1.2345", "1.2345"],
+    ["9999999999.9994", "9,999,999,999.9994"],
     ["-9999999999.999", "-9,999,999,999.999"],
-    ["9999999999.9995", "1e+10"],
-    ["12345678901", "1.235e+10"],
+    ["9999999999.9995", "9,999,999,999.9995"],
+    ["12345678901", "1.2346e+10"],
     ["1e308", "1e+308"],
-    ["1 CNY / 3", "0.333 CNY"],
-    ["16:9", "1.778"],
+    ["1 CNY / 3", "0.3333 CNY"],
+    ["16:9", "1.7778"],
     ["8 : 4", "2"],
   ]) {
     const result = calculateInput(source);

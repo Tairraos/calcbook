@@ -37,19 +37,26 @@ export async function revealNoteFile(noteId: string): Promise<void> {
   await invoke("reveal_note", { noteId });
 }
 
+// 记住主窗尺寸：桌面版存默认数据目录 ~/.calcbook/window.json（逻辑单位）。
+export async function saveWindowSize(width: number, height: number): Promise<void> {
+  if (!isTauri()) return;
+  await invoke("save_window_size", { width, height });
+}
+
 export async function hideCalculatorWindow(): Promise<void> {
   if (!isTauri()) return;
   await invoke("hide_calculator");
 }
 
 // 计算器子窗口启动时读取工作区配色；主题变化经 CALCULATOR_THEME_EVENT 增量同步。
+// 0.6.10 及以前存的是 paper/midnight，一并识别。
 export function readStoredTheme(): string {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    const theme = raw ? (JSON.parse(raw)?.theme ?? "paper") : "paper";
-    return theme === "midnight" ? "midnight" : "paper";
+    const theme = raw ? (JSON.parse(raw)?.theme ?? "light") : "light";
+    return theme === "dark" || theme === "midnight" ? "dark" : "light";
   } catch {
-    return "paper";
+    return "light";
   }
 }
 
@@ -84,7 +91,7 @@ export async function loadWorkspace(): Promise<Workspace | null> {
       }
       const created = parseWorkspace({
         version: 1,
-        theme: "paper",
+        theme: "light",
         activeId: null,
         format: DEFAULT_FORMAT_SETTINGS,
         notes,

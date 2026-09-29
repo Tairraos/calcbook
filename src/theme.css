@@ -1,74 +1,77 @@
+/* 配色事实来源：所有颜色变量在这里定义，styles.css 只通过 var() 引用。
+   下面两块分别是浅色（纸白 light）与深色（午夜 dark）主题，变量名一一对应；
+   每行注释说明该颜色出现在界面的哪些位置。 */
 :root,
-[data-theme="paper"] {
-  color-scheme: light;
-  --paper: #ffffff;
-  --sidebar: #f7f7f7;
-  --calculator: #f7f7f7;
-  --card: #ffffff;
-  --search-bg: #ffffff;
-  --ink: #2f3439;
-  --muted: #68727d;
-  --faint: #707b87;
-  --green: #467616;
-  --green-hover: #396310;
-  --heading-green: #6b7787;
-  --sage: #eef4e8;
-  --sage-border: #d8e4ce;
-  --screen: #ffffff;
-  --border: #e5e7e9;
-  --subtle-border: #eef0f2;
-  --strong-border: #c4c9cf;
-  --hover: #eceef0;
-  --avatar: #eceef0;
-  --key: #ffffff;
-  --key-hover: #eceef0;
-  --function-key: #f0f1f2;
-  --expression: #004b56;
-  --number: #60798a;
-  --operator: #425862;
-  --comment: #6b7787;
-  --line-number: #a7aeb7;
-  --help-arrow: #7a8b1f;
-  --error: #bd3f3f;
-  --inverse: #ffffff;
-  --selection: #73acd344;
-  --focus-caret: #000000;
-  --calc-screen-focus: #f5f7f1;
+[data-theme="light"] {
+  color-scheme: light; /* 告诉浏览器按浅色渲染滚动条、表单等原生控件 */
+  --paper: #ffffff; /* 主区底色：body、笔记主区、弹窗、toast、错误提示浮层 */
+  --sidebar: #f7f7f7; /* 侧栏底色；设置弹窗存储路径行、单位制选项、「历史/清空」小按钮底 */
+  --calculator: #f7f7f7; /* 计算器子窗口整体底色 */
+  --card: #ffffff; /* 浮起卡片：选中的笔记卡、右键菜单底色 */
+  --search-bg: #ffffff; /* 搜索框底色 */
+  --ink: #2f3439; /* 主文字：正文、笔记标题、面包屑、常规按钮文字等 */
+  --muted: #68727d; /* 次要文字：笔记预览与日期、侧栏 tab 未选中、图标按钮、说明文字、状态栏 */
+  --faint: #707b87; /* 更弱文字：输入框 placeholder、语法速查表头 */
+  --green: #467616; /* 品牌强调绿：主按钮底、计算结果、等号键底、选中 tab 文字、链接、focus ring、保存状态点 */
+  --green-hover: #396310; /* 强调绿 hover 加深：主按钮、等号键悬停时的底/边框 */
+  --heading-green: #6b7787; /* 标题点缀绿（当前界面已不使用，遗留） */
+  --sage: #eef4e8; /* 苔绿淡底：选中 tab、「历史」开关按压态、计算器开关打开、运算符键、结果行 hover、废纸篓横幅 */
+  --sage-border: #d8e4ce; /* 苔绿淡底配套边框：同上选中态、计算器算式屏边框 */
+  --screen: #ffffff; /* 计算器算式屏底色 */
+  --border: #e5e7e9; /* 常规边框：侧栏右缘、顶栏下缘、搜索框、tab 按钮、按键、弹窗、历史侧栏分隔 */
+  --subtle-border: #eef0f2; /* 更淡分隔线：结果列左缘、历史条目行线、帮助表格行线 */
+  --strong-border: #c4c9cf; /* 强边框：搜索框/算式屏聚焦、次级按钮、滚动条、保存状态点、状态栏分隔点 */
+  --hover: #eceef0; /* 中性悬停底：笔记卡、图标按钮、tab、右键菜单项、帮助 tab 悬停 */
+  --avatar: #eceef0; /* 工作区头像底色（当前界面已不使用，遗留） */
+  --key: #ffffff; /* 按键底：计算器数字键、次级按钮、便捷输入 ×/÷ 键 */
+  --key-hover: #eceef0; /* 按键悬停底色 */
+  --function-key: #f0f1f2; /* 计算器功能键（AC、括号、退格、±、%）底色 */
+  --expression: #004b56; /* 编辑器算式高亮：变量与表达式主色、帮助示例代码 */
+  --number: #60798a; /* 编辑器数字着色 */
+  --operator: #425862; /* 编辑器运算符着色 */
+  --comment: #6b7787; /* 编辑器注释行（# 与 //）着色 */
+  --line-number: #a7aeb7; /* 编辑器行号 */
+  --help-arrow: #7a8b1f; /* 语法速查里的箭头符号（→）颜色 */
+  --error: #bd3f3f; /* 错误：行级错误、错误横幅、待检查计数、危险按钮、计算器错误信息 */
+  --inverse: #ffffff; /* 绿底上的反色文字：主按钮、等号键上的文字（浅色主题为白字） */
+  --selection: #73acd344; /* 文本选中高亮（半透明蓝）：全站 ::selection */
+  --focus-caret: #000000; /* 三个输入区（搜索/算式/编辑器）的文本光标颜色 */
+  --calc-screen-focus: #f5f7f1; /* 计算器算式屏聚焦时的底色（淡绿调） */
 }
 
-[data-theme="midnight"] {
-  color-scheme: dark;
-  --paper: #212226;
-  --sidebar: #222327;
-  --calculator: #222327;
-  --card: #2d2e34;
-  --search-bg: #2d2e34;
-  --ink: #e3e7e9;
-  --muted: #a0a3aa;
-  --faint: #969ba4;
-  --green: #8cd32d;
-  --green-hover: #a0e044;
-  --heading-green: #ffc22d;
-  --sage: #323b29;
-  --sage-border: #465638;
-  --screen: #212226;
-  --border: #383a40;
-  --subtle-border: #33353a;
-  --strong-border: #555860;
-  --hover: #313338;
-  --avatar: #34373d;
-  --key: #303237;
-  --key-hover: #3b3e44;
-  --function-key: #2a2c31;
-  --expression: #6cc4ed;
-  --number: #e3e7e9;
-  --operator: #e3e7e9;
-  --comment: #ffc22d;
-  --line-number: #5c5e67;
-  --help-arrow: #c6d94a;
-  --error: #f17e79;
-  --inverse: #27282d;
-  --selection: #6cc4ee40;
-  --focus-caret: #ffffff;
-  --calc-screen-focus: #262a21;
+[data-theme="dark"] {
+  color-scheme: dark; /* 告诉浏览器按深色渲染滚动条、表单等原生控件 */
+  --paper: #212226; /* 主区底色：body、笔记主区、弹窗、toast、错误提示浮层 */
+  --sidebar: #222327; /* 侧栏底色；设置弹窗存储路径行、单位制选项、「历史/清空」小按钮底 */
+  --calculator: #222327; /* 计算器子窗口整体底色 */
+  --card: #2d2e34; /* 浮起卡片：选中的笔记卡、右键菜单底色 */
+  --search-bg: #2d2e34; /* 搜索框底色 */
+  --ink: #e3e7e9; /* 主文字：正文、笔记标题、面包屑、常规按钮文字等 */
+  --muted: #a0a3aa; /* 次要文字：笔记预览与日期、侧栏 tab 未选中、图标按钮、说明文字、状态栏 */
+  --faint: #969ba4; /* 更弱文字：输入框 placeholder、语法速查表头 */
+  --green: #8cd32d; /* 品牌强调绿：主按钮底、计算结果、等号键底、选中 tab 文字、链接、focus ring、保存状态点 */
+  --green-hover: #a0e044; /* 强调绿 hover 提亮：主按钮、等号键悬停时的底/边框 */
+  --heading-green: #ffc22d; /* 标题点缀金（当前界面已不使用，遗留） */
+  --sage: #323b29; /* 苔绿淡底：选中 tab、「历史」开关按压态、计算器开关打开、运算符键、结果行 hover、废纸篓横幅 */
+  --sage-border: #465638; /* 苔绿淡底配套边框：同上选中态、计算器算式屏边框 */
+  --screen: #212226; /* 计算器算式屏底色 */
+  --border: #383a40; /* 常规边框：侧栏右缘、顶栏下缘、搜索框、tab 按钮、按键、弹窗、历史侧栏分隔 */
+  --subtle-border: #33353a; /* 更淡分隔线：结果列左缘、历史条目行线、帮助表格行线 */
+  --strong-border: #555860; /* 强边框：搜索框/算式屏聚焦、次级按钮、滚动条、保存状态点、状态栏分隔点 */
+  --hover: #313338; /* 中性悬停底：笔记卡、图标按钮、tab、右键菜单项、帮助 tab 悬停 */
+  --avatar: #34373d; /* 工作区头像底色（当前界面已不使用，遗留） */
+  --key: #303237; /* 按键底：计算器数字键、次级按钮、便捷输入 ×/÷ 键 */
+  --key-hover: #3b3e44; /* 按键悬停底色 */
+  --function-key: #2a2c31; /* 计算器功能键（AC、括号、退格、±、%）底色 */
+  --expression: #6cc4ed; /* 编辑器算式高亮：变量与表达式主色、帮助示例代码 */
+  --number: #e3e7e9; /* 编辑器数字着色 */
+  --operator: #e3e7e9; /* 编辑器运算符着色 */
+  --comment: #ffc22d; /* 编辑器注释行（# 与 //）着色 */
+  --line-number: #5c5e67; /* 编辑器行号 */
+  --help-arrow: #c6d94a; /* 语法速查里的箭头符号（→）颜色 */
+  --error: #f17e79; /* 错误：行级错误、错误横幅、待检查计数、危险按钮、计算器错误信息 */
+  --inverse: #27282d; /* 绿底上的反色文字：主按钮、等号键上的文字（深色主题为近黑字） */
+  --selection: #6cc4ee40; /* 文本选中高亮（半透明蓝）：全站 ::selection */
+  --focus-caret: #ffffff; /* 三个输入区（搜索/算式/编辑器）的文本光标颜色 */
+  --calc-screen-focus: #262a21; /* 计算器算式屏聚焦时的底色（暗绿调） */
 }

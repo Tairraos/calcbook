@@ -85,6 +85,7 @@ const reservedGroups: ReferenceGroup[] = [
   },
   {
     title: "保留字 · 函数、常量、汇总与关键字",
+    termLines: true,
     rows: [
       ["sqrt / abs / round / ceil / floor", "函数", "sqrt(144) → 12"],
       ["pi / e", "常量", "pi × 2 → 6.283"],
@@ -128,34 +129,30 @@ const unitGroups: ReferenceGroup[] = [
       [
         "公里 / 千米 → km；米 → m；厘米 → cm；毫米 / 微米 / 纳米 → mm / um / nm",
         "长度",
-        "1英里 + 1公里 → 2.609344 km",
+        "1英里 + 1公里 → 2.6093 km",
       ],
       [
-        "英寸 / 英尺 / 码 / 英里 / 海里 → inch / foot / yard / mile / nmi",
+        "英寸 / 英尺 / 码 → inch / foot / yard；英里 / 海里 → mile / nmi",
         "长度（英制）",
-        "10磅 to 千克 → 4.5359237 kg",
+        "10磅 to 千克 → 4.5359 kg",
       ],
       [
         "吨 → t；千克 / 公斤 → kg；克 → g；毫克 / 微克 → mg / ug",
         "质量",
-        "1 lb + 1 kg → 1.45359237 kg",
+        "1 lb + 1 kg → 1.4536 kg",
       ],
       ["里 → 500 m；斤 → 500 g；两 → 50 g；钱 → 5 g；石 → 100 L", "市制单位", "1斤 + 10两 → 2 jin"],
       ["磅 / 盎司 / 英石 → lb / oz / stone", "质量（英制）", "2斤 to 克 → 1,000 g"],
+      ["升 → l；毫升 / 厘升 / 分升 → ml / cl / dl；立方米 → m3", "体积", "2加仑 to 升 → 7.5708 l"],
       [
-        "升 → l；毫升 / 厘升 / 分升 → ml / cl / dl；立方米 → m3",
-        "体积",
-        "2加仑 to 升 → 7.570823568 l",
-      ],
-      [
-        "加仑 / 品脱 / 夸脱 / 杯 / 汤匙 / 茶匙 → gallon / pint / quart / cup / tablespoon / teaspoon",
+        "加仑 / 品脱 / 夸脱 → gallon / pint / quart；杯 / 汤匙 / 茶匙 → cup / tablespoon / teaspoon",
         "体积（英制）",
-        "1 gal + 1 l → 4.785411784 l",
+        "1 gal + 1 l → 4.7854 l",
       ],
       [
         "平方米 → m2；公顷 → hectare；亩 → 666.67 m2；英亩 / 平方英尺 → acre / sqft",
         "面积",
-        "1亩 to 平方米 → 666.66666666667 m2",
+        "1亩 to 平方米 → 666.6667 m2",
       ],
       ["天 / 日 → day；周 / 星期 → week；月 → month；年 → year", "时长", "3天 to 小时 → 72 hour"],
       ["摄氏度 → degC；华氏度 → degF；开尔文 → K", "温度", "100 celsius to fahrenheit → 212 degF"],
@@ -176,7 +173,7 @@ const unitGroups: ReferenceGroup[] = [
         "1卡 to 焦 → 4.184 J",
       ],
       ["瓦时 → Wh；千瓦时 → kWh；英热单位 → BTU；电子伏 → eV", "能量", "1 kWh to J → 3,600,000 J"],
-      ["瓦 / 瓦特 → W；千瓦 → kW；马力 → hp", "功率", "1 hp to W → 745.6998715386 W"],
+      ["瓦 / 瓦特 → W；千瓦 → kW；马力 → hp", "功率", "1 hp to W → 745.6999 W"],
       [
         "牛 / 牛顿 → N；磅力 → lbf；帕 / 帕斯卡 → Pa；千帕 / 巴 / 标准大气压 → kPa / bar / atm",
         "力与压强",
@@ -195,10 +192,10 @@ const unitGroups: ReferenceGroup[] = [
     termLines: true,
     rows: [
       ["公制英制混算", "英制并入公制，结果以公制呈现", "1 mile + 1 km → 2.609344 km"],
-      ["纯英制", "没有公制参与时保持英制", "1 mile + 1 ft → 1.0001893939394 mile"],
+      ["纯英制", "没有公制参与时保持英制", "1 mile + 1 ft → 1.0002 mile"],
       ["同量纲相除", "约分成纯数字", "10.2克 / 100克 → 0.102"],
       ["保留写法", "结果保留该行第一个操作数的单位与前缀", "1500毫克 → 1,500 mg"],
-      ["显式 to", "目标单位原样呈现", "5 km to mile → 3.1068559611867 mile"],
+      ["显式 to", "目标单位原样呈现", "5 km to mile → 3.1069 mile"],
       ["幂的写法", "复合单位幂用 ^，m/s2 会当成未知符号", "1 m/s^2 → 1 m / second^2"],
     ],
   },
@@ -247,13 +244,11 @@ function renderCell(text: string) {
   });
 }
 
-// 单位清单一格：按「；」断行，分号留在行尾。
+// 单位清单一格：按「；」拆行，每行独立芯片，分号不显示。
 function renderTermLines(text: string) {
-  const segments = text.split("；");
-  return segments.map((segment, index) => (
-    <span key={segment}>
-      {renderCell(index < segments.length - 1 ? `${segment}；` : segment)}
-      {index < segments.length - 1 && <br />}
+  return text.split("；").map((segment) => (
+    <span key={segment} className="term-line">
+      {renderCell(segment)}
     </span>
   ));
 }

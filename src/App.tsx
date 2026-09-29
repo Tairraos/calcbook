@@ -22,6 +22,8 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import logoDark from "./assets/dark.png";
+import logoLight from "./assets/light.png";
 import { convertUnitQuantity, evaluateNotebook } from "./domain/calculation.ts";
 import { parseNoteBody, serializeNoteBody } from "./domain/format.ts";
 import type { FormatSettings } from "./domain/formatting.ts";
@@ -49,6 +51,7 @@ import {
   isDesktopApp,
   openProject,
   revealNoteFile,
+  saveWindowSize,
   toggleCalculator,
 } from "./platform/storage.ts";
 import { Dialog } from "./ui/Dialog.tsx";
@@ -66,7 +69,7 @@ export default function App() {
     useWorkspace();
   const [query, setQuery] = useState("");
   const [trashView, setTrashView] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 760);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   // 计算器是独立子窗口：visible 由 Rust 事件推送，浏览器预览恒为关。
   const [calculatorVisible, setCalculatorVisible] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -79,6 +82,7 @@ export default function App() {
   const activeLineRef = useRef(0);
 
   const notes = workspace?.notes ?? [];
+  const trashCount = notes.filter((note) => note.trashed).length;
   const visibleNotes = notes.filter(
     (note) =>
       note.trashed === trashView &&
@@ -92,7 +96,7 @@ export default function App() {
   const errorCount = results.filter((line) => line.kind === "error").length;
 
   useEffect(() => {
-    document.documentElement.dataset.theme = workspace?.theme ?? "paper";
+    document.documentElement.dataset.theme = workspace?.theme ?? "light";
     document.documentElement.classList.toggle("native-titlebar", hasNativeTitlebar);
     document.title = `${selected?.title || "calcbook"} · calcbook`;
   }, [workspace?.theme, selected?.title]);
@@ -148,7 +152,6 @@ export default function App() {
       setTrashView(false);
       setQuery("");
       resetActiveLine();
-      if (window.innerWidth <= 760) setSidebarOpen(false);
       requestAnimationFrame(() => editorRef.current?.focus());
       return true;
     },
@@ -367,8 +370,26 @@ export default function App() {
 
   // 计算器子窗口状态：初始查询一次，之后由 Rust 在显示/隐藏时推送。
   // 桌面版主题存在文件系统而非 localStorage，子窗打开时需立即同步当前配色。
-  const themeRef = useRef(workspace?.theme ?? "paper");
-  themeRef.current = workspace?.theme ?? "paper";
+  // 记忆窗口尺寸：结束缩放 600ms 后保存，恢复时在 Rust 侧读取（默认最小 800×640）。
+  useEffect(() => {
+    if (!isDesktopApp) return;
+    let timer: number | undefined;
+    const onResize = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(
+        () => void saveWindowSize(window.innerWidth, window.innerHeight).catch(() => {}),
+        600,
+      );
+    };
+    window.addEventListener("resize", onResize);
+    return () => {
+      window.removeEventListener("resize", onResize);
+      window.clearTimeout(timer);
+    };
+  }, []);
+
+  const themeRef = useRef(workspace?.theme ?? "light");
+  themeRef.current = workspace?.theme ?? "light";
   useEffect(() => {
     if (!isDesktopApp) return;
     void calculatorStatus()
@@ -392,7 +413,7 @@ export default function App() {
   // 切换主题时同步给计算器子窗口。
   useEffect(() => {
     if (!isDesktopApp) return;
-    void emit(CALCULATOR_THEME_EVENT, workspace?.theme ?? "paper").catch(() => {});
+    void emit(CALCULATOR_THEME_EVENT, workspace?.theme ?? "light").catch(() => {});
   }, [workspace?.theme]);
 
   // 计算器「写入当前笔记」：经事件送达主窗，插入当前行之后。
@@ -492,7 +513,18 @@ export default function App() {
       <aside className="sidebar" aria-label="笔记导航">
         <div className="sidebar-inner">
           <div className="brand" data-tauri-drag-region>
-            <span>calcbook</span>
+            <img
+              src={logoLight}
+              className="brand-logo brand-light"
+              alt="calcbook"
+              draggable={false}
+            />
+            <img
+              src={logoDark}
+              className="brand-logo brand-dark"
+              alt="calcbook"
+              draggable={false}
+            />
           </div>
           <div className="search-field">
             <Search size={15} />
@@ -506,19 +538,48 @@ export default function App() {
             <kbd>⌘ K</kbd>
           </div>
           <div className="notebook-list-heading">
-            <span>{trashView ? "废纸篓" : "我的笔记"}</span>
-            {trashView ? (
-              <IconButton
-                title="永久删除废纸篓里的全部笔记"
-                onClick={() =>
-                  setConfirmDelete({
-                    mode: "all",
-                    count: notes.filter((note) => note.trashed).length,
-                  })
-                }
+            <div className="notebook-tabs">
+              <button
+                type="button"
+                className={trashView ? "" : "is-active"}
+                aria-pressed={!trashView}
+                onClick={() => {
+                  if (trashView) {
+                    setTrashView(false);
+                    setQuery("");
+                    resetActiveLine();
+                  }
+                }}
               >
-                <Trash2 size={17} />
-              </IconButton>
+                我的笔记
+              </button>
+              <button
+                type="button"
+                className={trashView ? "is-active" : ""}
+                aria-pressed={trashView}
+                onClick={() => {
+                  if (!trashView) {
+                    setTrashView(true);
+                    setQuery("");
+                    resetActiveLine();
+                  }
+                }}
+              >
+                废纸篓
+              </button>
+            </div>
+            {trashView ? (
+              <div className="heading-actions">
+                <span className="trash-count" title="废纸篓中的笔记数">
+                  {trashCount}
+                </span>
+                <IconButton
+                  title="永久删除废纸篓里的全部笔记"
+                  onClick={() => setConfirmDelete({ mode: "all", count: trashCount })}
+                >
+                  <Trash2 size={17} />
+                </IconButton>
+              </div>
             ) : (
               <IconButton title="新建笔记" onClick={() => void newNote()}>
                 <Plus size={17} />
@@ -537,7 +598,6 @@ export default function App() {
                   update((before) => ({ ...before, activeId: note.id }));
                   resetActiveLine();
                   if (isDesktopApp) void ensureNoteFile(note.id, note.title);
-                  if (window.innerWidth <= 760) setSidebarOpen(false);
                 }}
                 onContextMenu={(event) => {
                   event.preventDefault();
@@ -571,31 +631,7 @@ export default function App() {
               </p>
             )}
           </div>
-          <button type="button" className="new-note-button" onClick={() => void newNote()}>
-            <Plus size={16} />
-            新建笔记<span>⌘ N</span>
-          </button>
           <div className="sidebar-bottom">
-            <button
-              type="button"
-              className={trashView ? "is-active" : ""}
-              onClick={() => {
-                setTrashView(!trashView);
-                setQuery("");
-                resetActiveLine();
-              }}
-            >
-              <Trash2 size={15} />
-              废纸篓
-              {notes.some((note) => note.trashed) && (
-                <span>{notes.filter((note) => note.trashed).length}</span>
-              )}
-            </button>
-            <button type="button" onClick={() => setHelpOpen(true)}>
-              <CircleHelp size={15} />
-              语法速查
-              <ChevronRight size={13} />
-            </button>
             <div className="settings-entry">
               <button
                 type="button"
@@ -607,29 +643,20 @@ export default function App() {
               </button>
               <IconButton
                 className="theme-toggle"
-                title={workspace.theme === "midnight" ? "切换到浅色模式" : "切换到深色模式"}
+                title={workspace.theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
                 onClick={() =>
                   update((before) => ({
                     ...before,
-                    theme: before.theme === "midnight" ? "paper" : "midnight",
+                    theme: before.theme === "dark" ? "light" : "dark",
                   }))
                 }
               >
-                {workspace.theme === "midnight" ? <Sun size={16} /> : <Moon size={16} />}
+                {workspace.theme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
               </IconButton>
             </div>
           </div>
         </div>
       </aside>
-      {sidebarOpen && (
-        <button
-          type="button"
-          className="sidebar-scrim"
-          aria-label="关闭笔记导航"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
-
       <main className="notebook-main">
         <header className="topbar" data-tauri-drag-region>
           <div className="breadcrumb">
@@ -651,17 +678,15 @@ export default function App() {
                 尚未保存
               </span>
             ) : (
-              <>
-                <button
-                  type="button"
-                  className="topbar-tool"
-                  title="按格式设置整理当前笔记的全部算式"
-                  onClick={applyFormatting}
-                >
-                  <Sparkles size={16} />
-                  <span>格式化</span>
-                </button>
-              </>
+              <button
+                type="button"
+                className="topbar-tool"
+                title="按格式设置整理当前笔记的全部算式"
+                onClick={applyFormatting}
+              >
+                <Sparkles size={16} />
+                <span>格式化</span>
+              </button>
             )}
             <button
               type="button"
@@ -700,6 +725,9 @@ export default function App() {
                   THINK IT. NOTE IT. SOLVE IT.
                 </span>
                 <div className="note-tools">
+                  <IconButton title="语法速查" onClick={() => setHelpOpen(true)}>
+                    <CircleHelp size={16} />
+                  </IconButton>
                   <IconButton title="导入文本笔记" onClick={() => void importNote()}>
                     <ArrowUpFromLine size={16} />
                   </IconButton>

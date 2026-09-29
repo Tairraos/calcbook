@@ -23,12 +23,12 @@ test("editing controls and invalid arithmetic", () => {
   assert.equal(type(["8", "÷", "0", "="]).result, null);
   assert.ok(type(["8", "÷", "0", "="]).error);
 });
-test("three-place display never rounds the value used for continuation or history", () => {
+test("four-place display never rounds the value used for continuation or history", () => {
   const state = type(["1", "÷", "7", "="]);
-  assert.equal(state.display, "0.143");
+  assert.equal(state.display, "0.1429");
   assert.ok(state.result && state.result.length > 60);
   assert.equal(state.history[0].result, state.result);
-  assert.equal(state.history[0].display, "0.143");
+  assert.equal(state.history[0].display, "0.1429");
   const continued = ["×", "7", "="].reduce(pressKeypad, state);
   const direct = calculateInput("(1/7)*7");
   assert.ok(direct.ok);

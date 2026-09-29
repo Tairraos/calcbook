@@ -4,7 +4,7 @@
 
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
-import { BookOpen, Delete, History, PenLine, RotateCcw } from "lucide-react";
+import { BookOpen, Delete, History, PenLine } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { calculateInput } from "./domain/calculation.ts";
 import { initialKeypad, type KeypadState, pressKeypad } from "./domain/keypad.ts";
@@ -84,7 +84,7 @@ export function CalculatorWindow() {
     if (!isDesktopApp) return;
     void emit(CALCULATOR_READY_EVENT).catch(() => {});
     const unlisten = listen<string>(CALCULATOR_THEME_EVENT, (event) => {
-      document.documentElement.dataset.theme = event.payload === "midnight" ? "midnight" : "paper";
+      document.documentElement.dataset.theme = event.payload === "dark" ? "dark" : "light";
     });
     return () => {
       void unlisten.then((dispose) => dispose());
@@ -161,17 +161,19 @@ export function CalculatorWindow() {
   return (
     <div className="calculator-window">
       <div className="calc-drag-strip" data-tauri-drag-region aria-hidden="true" />
-      <IconButton
-        className="calc-history-toggle"
-        title={historyOpen ? "隐藏最近计算" : "显示最近计算"}
-        aria-pressed={historyOpen}
-        onClick={toggleHistory}
-      >
-        <BookOpen size={13} />
-        历史
-      </IconButton>
       <div className={`calculator-inner ${historyOpen ? "has-history" : ""}`}>
         <div className="calc-main">
+          <div className="calc-header" data-tauri-drag-region>
+            <IconButton
+              className="calc-history-toggle"
+              title={historyOpen ? "隐藏最近计算" : "显示最近计算"}
+              aria-pressed={historyOpen}
+              onClick={toggleHistory}
+            >
+              <BookOpen size={13} />
+              历史
+            </IconButton>
+          </div>
           <div className="calc-screen">
             <div className="calc-screen-caption">
               <span>随手算一算</span>
@@ -245,12 +247,14 @@ export function CalculatorWindow() {
                 最近计算
               </span>
               {state.history.length > 0 && (
-                <IconButton
+                <button
+                  type="button"
+                  className="history-clear"
                   title="清空计算历史"
                   onClick={() => setState((before) => ({ ...before, history: [] }))}
                 >
-                  <RotateCcw size={13} />
-                </IconButton>
+                  清空
+                </button>
               )}
             </div>
             {state.history.length === 0 ? (

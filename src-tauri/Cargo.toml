@@ -1,6 +1,6 @@
 [package]
 name = "calcbook"
-version = "0.6.3"
+version = "0.6.11"
 description = "A quiet calculator notebook"
 authors = ["Tairraos"]
 edition = "2021"
@@ -20,6 +20,13 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri-plugin-dialog = "2"
 tauri-plugin-opener = "2"
+
+# 计算器跨屏定位：tao 的 set_position 底层是 NSWindow.setFrameTopLeftPoint，
+# AppKit 把它约束在窗口当前屏幕内，只有 setFrame(_:display:) 能跨屏移动窗口。
+# 版本与依赖树中 tao 0.35.3 所用 objc2 一致，不引入新的编译单元。
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit = { version = "0.3.2", features = ["NSWindow"] }
+objc2-foundation = { version = "0.3.2", features = ["NSGeometry"] }
 
 [dev-dependencies]
 tauri = { version = "2", features = ["test"] }

@@ -261,6 +261,20 @@ export function formatUnitSuffix(
   return result;
 }
 
+// 显示数值：小数最多 4 位（四舍五入），≥1e10 转科学计数法（尾数同为 4 位）。
+// 千位分隔只作用于整数部分——4 位小数会被全串正则误切（666.6667 → 666.6,667）。
+function formatDisplayNumber(numeric: BigNumber | number): string {
+  const decimal = isBigNumber(numeric) ? numeric : math.bignumber(numeric);
+  const rounded = decimal.toDecimalPlaces(4);
+  if (rounded.abs().gte("1e10")) {
+    return decimal.toExponential(4).replace(/\.?0+e/, "e");
+  }
+  if (rounded.isZero()) return "0";
+  const [intPart, decimalPart] = rounded.toFixed().split(".");
+  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return decimalPart ? `${grouped}.${decimalPart}` : grouped;
+}
+
 export function formatValue(
   value: CalcValue,
   language: ResultLanguage = "lower",
@@ -271,9 +285,7 @@ export function formatValue(
     language,
     chineseNames,
   );
-  const display = raw.replace(/^(-?\d+)(?=\.|\s|$)/, (digits: string) =>
-    digits.replace(/\B(?=(\d{3})+(?!\d))/g, ","),
-  );
+  const display = formatUnitSuffix(math.format(value, formatDisplayNumber), language, chineseNames);
   return { raw, display };
 }
 
@@ -633,15 +645,7 @@ export function convertUnitQuantity(value: number, from: string, to: string): nu
 export function calculateInput(expression: string) {
   try {
     const { value, language } = calculate(expression);
-    const display = math.format(value, (numeric: BigNumber | number) => {
-      const decimal = isBigNumber(numeric) ? numeric : math.bignumber(numeric);
-      const rounded = decimal.toDecimalPlaces(3);
-      if (rounded.abs().gte("1e10")) {
-        return decimal.toExponential(3).replace(/\.?0+e/, "e");
-      }
-      if (rounded.isZero()) return "0";
-      return rounded.toFixed().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-    });
+    const display = math.format(value, formatDisplayNumber);
     return {
       ok: true as const,
       raw: formatUnitSuffix(

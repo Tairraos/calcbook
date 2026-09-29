@@ -5,7 +5,7 @@ import { createWorkspace, MAX_NOTE_LENGTH, parseWorkspace } from "../src/domain/
 
 test("workspace round trip preserves notes, theme and trash", () => {
   const workspace = createWorkspace(new Date().toISOString(), () => crypto.randomUUID());
-  workspace.theme = "midnight";
+  workspace.theme = "dark";
   workspace.notes[0].trashed = true;
   assert.deepEqual(parseWorkspace(JSON.parse(JSON.stringify(workspace))), workspace);
 });
@@ -34,12 +34,12 @@ test("corrupt or unsupported workspaces are not accepted as empty", () => {
 test("legacy and removed themes migrate without changing notes", () => {
   const workspace = createWorkspace(new Date().toISOString(), () => crypto.randomUUID());
   for (const [legacy, current] of [
-    ["light", "paper"],
-    ["sand", "paper"],
-    ["mist", "paper"],
-    ["dark", "midnight"],
-    ["forest", "midnight"],
-    ["graphite", "midnight"],
+    ["paper", "light"],
+    ["sand", "light"],
+    ["mist", "light"],
+    ["midnight", "dark"],
+    ["forest", "dark"],
+    ["graphite", "dark"],
   ]) {
     const migrated = parseWorkspace({ ...workspace, theme: legacy });
     assert.equal(migrated.theme, current);

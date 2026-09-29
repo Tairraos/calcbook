@@ -219,6 +219,17 @@ fn reveal_note(
 }
 
 #[tauri::command]
+fn save_window_size(
+    app: tauri::AppHandle,
+    width: f64,
+    height: f64,
+    lock: tauri::State<StoreLock>,
+) -> Result<(), String> {
+    let _guard = lock.0.lock().map_err(|_| "存储忙，请重试")?;
+    store(&app)?.save_window_size(storage::WindowSize { width, height })
+}
+
+#[tauri::command]
 fn open_project(app: tauri::AppHandle) -> Result<(), String> {
     app.opener()
         .open_url("https://github.com/Tairraos/calcbook", None::<&str>)
@@ -275,6 +286,22 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .manage(StoreLock(Mutex::new(())))
         .manage(calculator::CalculatorLock(Mutex::new(())))
+        .setup(|app| {
+            // 恢复上次的窗口尺寸；无记录或异常时用最小尺寸 800×640。
+            if let Some(main) = app.get_webview_window("main") {
+                let restored = store(app.handle())
+                    .ok()
+                    .and_then(|store| store.window_size())
+                    .map(storage::WindowSize::clamped)
+                    .unwrap_or(storage::WindowSize {
+                        width: storage::MIN_WINDOW_WIDTH,
+                        height: storage::MIN_WINDOW_HEIGHT,
+                    });
+                let _ = main.set_size(tauri::LogicalSize::new(restored.width, restored.height));
+                let _ = main.show();
+            }
+            Ok(())
+        })
         .on_window_event(calculator::on_window_event)
         .invoke_handler(tauri::generate_handler![
             scan_workspace,
@@ -292,7 +319,8 @@ pub fn run() {
             reveal_note,
             storage_info,
             choose_storage_directory,
-            open_project
+            open_project,
+            save_window_size
         ])
         .run(tauri::generate_context!())
         .expect("Calcbook 无法启动");
