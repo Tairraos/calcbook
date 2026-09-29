@@ -5,8 +5,10 @@ import { EXAMPLES, type Note, parseWorkspace, type Workspace } from "../domain/n
 
 export const STORAGE_KEY = "calcbook.workspace.v1";
 export type StorageInfo = { directory: string; defaultDirectory: string; canChoose: boolean };
-export const hasNativeTitlebar = isTauri();
 export const isDesktopApp = isTauri();
+// Overlay 标题栏（隐藏原生标题、内容延伸到标题栏下、为红绿灯留白）只在 macOS 成立：
+// Windows/Linux 用系统默认标题栏，界面不能预留红绿灯位置，也不能加 titlebar 内边距。
+export const hasNativeTitlebar = isDesktopApp && /Macintosh|Mac OS X/.test(navigator.userAgent);
 
 // 计算器独立窗口：窗口由 Rust 按需创建，「关闭」即隐藏，状态常驻到 app 退出。
 export const CALCULATOR_INSERT_EVENT = "calculator://insert";
