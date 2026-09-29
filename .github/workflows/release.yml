@@ -1,0 +1,73 @@
+name: Release
+# 触发：推送 v 开头的 tag（如 v0.6.13）→ 三平台构建并自动发布 GitHub Release。
+# tag 里的版本必须与 package.json / tauri.conf.json / Cargo.toml 一致，否则流程失败。
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: tag 版本与 package.json 一致
+        run: |
+          pkg=$(node -p "require('./package.json').version")
+          tag="${GITHUB_REF_NAME#v}"
+          if [ "$pkg" != "$tag" ]; then
+            echo "tag 是 v$tag，package.json 是 $pkg；请把三处版本号改一致后重新打 tag。"
+            exit 1
+          fi
+
+  publish:
+    needs: guard
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-latest
+            rust-targets: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin
+          - platform: macos-latest
+            rust-targets: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin
+          - platform: windows-latest
+            rust-targets: ""
+            args: ""
+          - platform: ubuntu-22.04
+            rust-targets: ""
+            args: ""
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: pnpm
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - name: 安装 Linux 打包依赖
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - run: pnpm install --frozen-lockfile
+      - name: 构建并发布 Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Calcbook ${{ github.ref_name }}
+          releaseBody: 详见下方 Assets；安装包未签名，macOS 首次打开请右键「打开」。
+          releaseDraft: false
+          prerelease: false
+          args: ${{ matrix.args }}

@@ -26,6 +26,8 @@ pnpm check:native     # Rust 格式、clippy、持久化测试
 pnpm bench            # 计算引擎性能基线
 ```
 
+发布：推送 `v<版本号>` tag（如 `v0.6.13`）触发 GitHub Actions 三平台构建并自动发布 Release（[.github/workflows/release.yml](.github/workflows/release.yml)）；tag 版本必须与 package.json 一致。agent 不代发布，tag 由用户自己推。
+
 ## 会话收尾：构建与清理
 
 - 每次会话结束前构建一次 .app：`pnpm desktop:build --bundles app`，产物在 `target/release/bundle/macos/Calcbook.app`。只出 `.app`，不构建 dmg。会话改了功能或用户可见行为时，先按「每次变更」升级版本号再构建。
