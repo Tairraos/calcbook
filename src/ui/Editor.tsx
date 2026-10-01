@@ -27,6 +27,8 @@ type Props = {
   // 查找替换：正文绝对偏移的匹配列表与当前匹配下标；空数组/未传时不渲染高亮
   findMatches?: MatchRange[];
   activeMatchIndex?: number;
+  // 点击结果列「检查算式」：把光标定位到该行行尾（含滚动与焦点返还）
+  onGotoLineEnd?: (line: number) => void;
 };
 
 // 行内匹配段（相对行首的偏移），active 为当前匹配
@@ -139,6 +141,7 @@ export function Editor({
   onDestructiveChange,
   findMatches,
   activeMatchIndex,
+  onGotoLineEnd,
 }: Props) {
   const [scrollLeft, setScrollLeft] = useState(0);
   // 每行行首的正文绝对偏移（镜像行与正文行 1:1）
@@ -165,6 +168,25 @@ export function Editor({
     return marks.length > 0 ? marks : undefined;
   };
   const [copiedLine, setCopiedLine] = useState<number | null>(null);
+  // 错误提示浮层的展开方向：向下空间不足改向上、向右超出改从行右缘向左展开。
+  // hover/focus 时按按钮与滚动容器的真实位置判定，不写死。
+  const [tipPlan, setTipPlan] = useState<{ line: number; up: boolean; right: boolean } | null>(
+    null,
+  );
+  const TIP_HEIGHT = 30; // 单行提示 + 上下留白的估算高度
+  function planTipDirection(button: HTMLButtonElement, index: number, errorText: string) {
+    const scroller = button.closest(".editor-scroll");
+    const sRect = scroller?.getBoundingClientRect();
+    const below = sRect ? sRect.bottom : window.innerHeight;
+    const rightEdge = sRect ? sRect.right : window.innerWidth;
+    const up = button.getBoundingClientRect().bottom + TIP_HEIGHT + 8 > below;
+    // 估算单行宽度（12px 字体 CJK 约 13px/字含留白余量），从行左缘向右会超出就翻转到右缘
+    const rowLeft =
+      button.closest(".result-row")?.getBoundingClientRect().left ??
+      button.getBoundingClientRect().left;
+    const right = rowLeft + errorText.length * 13 + 24 + 8 > rightEdge;
+    setTipPlan({ line: index, up, right });
+  }
   const count = Math.max(13, results.length + 2);
   const height = count * 34 + 32;
   const selectLine = (target: HTMLTextAreaElement) =>
@@ -327,7 +349,9 @@ export function Editor({
         <section className="editor-results" aria-label="逐行计算结果">
           {results.map((line, index) => (
             <div
-              className={`result-row ${index === activeLine ? "is-active" : ""}`}
+              className={`result-row ${index === activeLine ? "is-active" : ""} ${
+                line.kind === "error" ? "is-error" : ""
+              }`}
               key={`result-${index}`}
               data-testid={`result-line-${index + 1}`}
             >
@@ -355,12 +379,23 @@ export function Editor({
                 <button
                   type="button"
                   className="line-error"
-                  title={line.error}
-                  aria-label={`第 ${index + 1} 行：${line.error}`}
+                  aria-label={`第 ${index + 1} 行：${line.error}，点击定位到行尾`}
+                  onClick={() => onGotoLineEnd?.(index)}
+                  onMouseEnter={(event) =>
+                    planTipDirection(event.currentTarget, index, line.error ?? "")
+                  }
+                  onFocus={(event) =>
+                    planTipDirection(event.currentTarget, index, line.error ?? "")
+                  }
                 >
                   <TriangleAlert size={13} />
                   <span>检查算式</span>
-                  <span className="error-tooltip" role="tooltip">
+                  <span
+                    className={`error-tooltip ${
+                      tipPlan?.line === index && tipPlan.up ? "is-up" : ""
+                    } ${tipPlan?.line === index && tipPlan.right ? "is-right" : ""}`}
+                    role="tooltip"
+                  >
                     {line.error}
                   </span>
                 </button>

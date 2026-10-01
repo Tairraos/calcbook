@@ -920,28 +920,50 @@ kbd {
 .line-result:focus-visible .copy-result-icon {
   opacity: 1;
 }
+.result-row.is-error {
+  justify-content: flex-start;
+}
 .line-error {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   color: var(--error);
   font-size: 12px;
-  cursor: help;
+  cursor: pointer;
   padding: 0 8px;
+  border-radius: 4px;
+}
+.line-error:hover {
+  background: var(--sage);
 }
 .error-tooltip {
   display: none;
   position: absolute;
-  right: 0;
+  left: 0;
   top: var(--editor-line-height);
-  background: var(--ink);
-  color: var(--paper);
-  padding: 8px 10px;
-  width: 220px;
+  /* 与编辑器同色的纸面/墨色，单行弹性宽度，默认边框色描边 */
+  background: var(--paper);
+  color: var(--ink);
+  border: 1px solid var(--border);
+  padding: 3px 8px;
+  width: auto;
+  max-width: min(480px, 70vw);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   border-radius: 5px;
   z-index: 5;
-  line-height: 1.6;
+  line-height: 1.5;
   box-shadow: 0 4px 16px #0002;
+}
+.error-tooltip.is-up {
+  top: auto;
+  bottom: var(--editor-line-height);
+}
+/* 向右会超出滚动容器时，改从行右缘向左展开 */
+.error-tooltip.is-right {
+  left: auto;
+  right: 0;
 }
 .line-error:hover .error-tooltip,
 .line-error:focus .error-tooltip {
@@ -1019,6 +1041,16 @@ kbd {
 .error-count:hover {
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+/* 光标停在错误行时，「n 处待检查」后展示当前处的出错原因；超长省略 */
+.error-detail {
+  color: var(--error);
+  opacity: 0.85;
+  min-width: 0;
+  max-width: 42vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /* 计算器独立窗口：右上角「历史」按钮，主体 + 可选的最近计算侧栏。 */
 .calculator-window {

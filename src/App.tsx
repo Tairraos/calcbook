@@ -161,6 +161,11 @@ export default function App() {
   );
   const resultCount = results.filter((line) => line.kind === "result").length;
   const errorCount = results.filter((line) => line.kind === "error").length;
+  // 光标停在错误行时，状态栏在「n 处待检查」后展示它是第几处及出错原因
+  const activeErrorOrdinal = results
+    .slice(0, activeLine + 1)
+    .filter((line) => line.kind === "error").length;
+  const activeError = results[activeLine]?.kind === "error" ? results[activeLine] : null;
 
   // 查找替换：匹配结果随查询/开关/正文派生；ref 镜像供回调读取最新列表，避免闭包过期
   const findMatcher = useMemo(() => buildMatcher(findQuery, findOptions), [findQuery, findOptions]);
@@ -327,16 +332,11 @@ export default function App() {
     errorNavRef.current = -1;
   }, []);
 
-  // 点击把光标依次停在每个错误行的行尾（循环），焦点还回编辑器。
-  function gotoNextError() {
+  // 把光标定位到指定行的行尾（焦点还回编辑器，滚动到可见）。
+  // 状态栏「n 处待检查」与结果列「检查算式」共用。
+  function jumpToLineEnd(lineIndex: number) {
     const textarea = editorRef.current;
     if (!textarea || !selected) return;
-    const errorLines = results
-      .map((line, index) => (line.kind === "error" ? index : -1))
-      .filter((index) => index >= 0);
-    if (errorLines.length === 0) return;
-    errorNavRef.current = (errorNavRef.current + 1) % errorLines.length;
-    const lineIndex = errorLines[errorNavRef.current];
     const lines = selected.body.split("\n");
     let pos = 0;
     for (let i = 0; i < lineIndex && i < lines.length; i += 1) pos += lines[i].length + 1;
@@ -345,6 +345,16 @@ export default function App() {
     textarea.setSelectionRange(pos, pos);
     handleActiveLine(Math.min(lineIndex, lines.length - 1));
     scrollMatchIntoView(textarea, { start: pos, end: pos });
+  }
+
+  // 点击把光标依次停在每个错误行的行尾（循环），焦点还回编辑器。
+  function gotoNextError() {
+    const errorLines = results
+      .map((line, index) => (line.kind === "error" ? index : -1))
+      .filter((index) => index >= 0);
+    if (errorLines.length === 0) return;
+    errorNavRef.current = (errorNavRef.current + 1) % errorLines.length;
+    jumpToLineEnd(errorLines[errorNavRef.current]);
   }
 
   useEffect(() => {
@@ -1174,6 +1184,7 @@ export default function App() {
                 readOnly={selected.trashed}
                 findMatches={findMatchesList}
                 activeMatchIndex={activeMatchIndex}
+                onGotoLineEnd={jumpToLineEnd}
               />
             </div>
             <footer className="statusbar">
@@ -1189,6 +1200,11 @@ export default function App() {
                   >
                     · {errorCount} 处待检查
                   </button>
+                )}
+                {activeError && (
+                  <span className="error-detail">
+                    第 {activeErrorOrdinal} 处：{activeError.error}
+                  </span>
                 )}
               </span>
               <span>
