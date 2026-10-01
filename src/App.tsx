@@ -102,7 +102,8 @@ export default function App() {
   const resultThousands = workspace?.format.resultThousands ?? true;
   const resultUnitSpacing = workspace?.format.unitSpace ?? false;
   const results = useMemo(
-    () => evaluateNotebook(selected?.body ?? "", { unitSpacing: resultUnitSpacing, resultThousands }),
+    () =>
+      evaluateNotebook(selected?.body ?? "", { unitSpacing: resultUnitSpacing, resultThousands }),
     [selected?.body, resultThousands, resultUnitSpacing],
   );
   const resultCount = results.filter((line) => line.kind === "result").length;
