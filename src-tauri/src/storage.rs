@@ -979,6 +979,9 @@ pub fn create_note(directory: &Path, title: &str, body: &str) -> Result<PayloadN
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Settings {
     data_directory: Option<PathBuf>,
+    /// 主窗尺寸（逻辑单位）：机器属性，跟随配置目录而非数据目录。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    window: Option<WindowSize>,
 }
 
 pub struct Store {
@@ -987,7 +990,7 @@ pub struct Store {
     pub legacy: Option<PathBuf>,
 }
 
-/// 上次关闭时的主窗尺寸（逻辑单位），存默认数据目录 ~/.calcbook/window.json。
+/// 上次关闭时的主窗尺寸（逻辑单位），存配置目录 settings.json 的 window 字段。
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Debug)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WindowSize {
@@ -1010,28 +1013,37 @@ impl WindowSize {
 }
 
 impl Store {
-    /// 读取上次记录的窗口尺寸；文件缺失或损坏时返回 None（回退最小尺寸）。
+    /// 读取上次记录的窗口尺寸：优先取配置目录 settings.json 的 window 字段；
+    /// 没有则兼容读取 1.4.6 及以前留在默认数据目录的 window.json。都缺失或损坏时
+    /// 返回 None（回退最小尺寸，不阻塞启动）。
     pub fn window_size(&self) -> Option<WindowSize> {
+        if let Some(window) = self.settings().ok()?.window {
+            return Some(window);
+        }
         let bytes = fs::read(self.default.join("window.json")).ok()?;
         let size: WindowSize = serde_json::from_slice(&bytes).ok()?;
         (size.width.is_finite() && size.height.is_finite()).then_some(size)
     }
 
-    /// 记录窗口尺寸：先钳制到最小尺寸，再按既有模式原子写入。
+    /// 记录窗口尺寸：先钳制到最小尺寸，再与 dataDirectory 一起原子写回 settings.json；
+    /// 成功后清掉旧版留在默认数据目录的 window.json（尽力而为）。
     pub fn save_window_size(&self, size: WindowSize) -> Result<(), String> {
         let size = size.clamped();
-        fs::create_dir_all(&self.default).map_err(|error| format!("无法创建数据目录：{error}"))?;
-        let bytes = serde_json::to_vec_pretty(&size)
+        let mut settings = self.settings()?;
+        settings.window = Some(size);
+        let bytes = serde_json::to_vec_pretty(&settings)
             .map_err(|error| format!("无法序列化窗口尺寸：{error}"))?;
-        let temporary = self.default.join("window.json.tmp");
+        fs::create_dir_all(&self.config).map_err(|error| format!("无法创建配置目录：{error}"))?;
+        let temporary = self.config.join("settings.json.tmp");
         let mut file =
             fs::File::create(&temporary).map_err(|error| format!("无法暂存窗口尺寸：{error}"))?;
         file.write_all(&bytes)
             .and_then(|()| file.sync_all())
             .map_err(|error| format!("窗口尺寸未保存：{error}"))?;
         drop(file);
-        fs::rename(temporary, self.default.join("window.json"))
+        fs::rename(temporary, self.config.join("settings.json"))
             .map_err(|error| format!("窗口尺寸未保存：{error}"))?;
+        let _ = fs::remove_file(self.default.join("window.json"));
         Ok(())
     }
 
@@ -1154,10 +1166,11 @@ impl Store {
             fs::write(target.join(WORKSPACE_FILE), &bytes)
                 .map_err(|error| format!("无法复制笔记：{error}"))?;
         }
-        // 提交配置：失败时原目录保持不变
+        // 提交配置：失败时原目录保持不变（窗口尺寸是机器属性，保留不丢）
         fs::create_dir_all(&self.config).map_err(|error| format!("无法创建配置目录：{error}"))?;
         let settings_bytes = serde_json::to_vec(&Settings {
             data_directory: Some(target.clone()),
+            window: self.settings().ok().and_then(|settings| settings.window),
         })
         .map_err(|error| error.to_string())?;
         let temporary = self.config.join("settings.json.tmp");
@@ -1188,7 +1201,25 @@ mod tests {
         };
         // 无记录时回退 None（启动侧再用最小尺寸兜底）
         assert_eq!(store.window_size(), None);
-        // 正常往返
+        // 1.4.6 及以前留在默认数据目录的旧 window.json 兼容读取
+        fs::create_dir_all(&store.default).unwrap();
+        fs::write(
+            store.default.join("window.json"),
+            serde_json::to_vec(&WindowSize {
+                width: 1024.0,
+                height: 768.0,
+            })
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            store.window_size(),
+            Some(WindowSize {
+                width: 1024.0,
+                height: 768.0,
+            })
+        );
+        // 正常往返：写入配置目录 settings.json，同时清掉旧 window.json
         store
             .save_window_size(WindowSize {
                 width: 1280.0,
@@ -1202,6 +1233,18 @@ mod tests {
                 height: 820.0,
             })
         );
+        assert!(!store.default.join("window.json").exists());
+        // dataDirectory 与窗口尺寸同文件互不覆盖
+        let settings: Settings =
+            serde_json::from_slice(&fs::read(store.config.join("settings.json")).unwrap()).unwrap();
+        assert_eq!(
+            settings.window,
+            Some(WindowSize {
+                width: 1280.0,
+                height: 820.0,
+            })
+        );
+        assert!(settings.data_directory.is_none());
         // 保存时钳制到最小尺寸
         store
             .save_window_size(WindowSize {
@@ -1216,8 +1259,8 @@ mod tests {
                 height: MIN_WINDOW_HEIGHT,
             })
         );
-        // 损坏文件视为无记录，不阻塞启动
-        fs::write(store.default.join("window.json"), "not json").unwrap();
+        // 损坏的 settings.json 视为无记录，不阻塞启动
+        fs::write(store.config.join("settings.json"), "not json").unwrap();
         assert_eq!(store.window_size(), None);
     }
 
