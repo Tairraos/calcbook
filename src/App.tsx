@@ -288,12 +288,15 @@ export default function App() {
       return;
     }
     void recordNoteHistory(selected.id, selected.body);
-    formatUndoRef.current = { noteId: selected.id, previous: selected.body, formatted: text };
     if (textarea) {
       textarea.focus();
       textarea.setSelectionRange(0, textarea.value.length);
       try {
         if (document.execCommand("insertText", false, text)) {
+          // execCommand 成功：原生撤销栈已接管这条记录，应用内撤销必须让位——
+          // 两套同时存在时，第一次 Cmd+Z 走状态恢复、第二次又回放原生条目，
+          // 按旧坐标删插会把原文复制一份（实测 bug）。
+          formatUndoRef.current = null;
           setNotice(`已替换 ${count} 处`);
           findReplaceRef.current?.focus();
           return;
@@ -302,6 +305,8 @@ export default function App() {
         // execCommand 不可用时走状态替换
       }
     }
+    // 回退路径：React 状态替换无原生撤销条目，用 formatUndoRef 应用内撤销兜底
+    formatUndoRef.current = { noteId: selected.id, previous: selected.body, formatted: text };
     patchNote({ body: text });
     setNotice(`已替换 ${count} 处`);
   }
@@ -586,15 +591,15 @@ export default function App() {
     }
     // 格式化是破坏性操作：整理前的内容先留档进历史
     void recordNoteHistory(selected.id, selected.body);
-    // 应用内撤销：格式化走 React 状态替换，原生撤销栈不可靠，
-    // 记住格式化前的正文，Cmd+Z 在无后续编辑时直接恢复。
-    formatUndoRef.current = { noteId: selected.id, previous: selected.body, formatted };
     const textarea = editorRef.current;
     if (textarea && formatted.length <= MAX_NOTE_LENGTH) {
       textarea.focus();
       textarea.setSelectionRange(0, textarea.value.length);
       try {
         if (document.execCommand("insertText", false, formatted)) {
+          // execCommand 成功：原生撤销栈接管（一次 Cmd+Z 还原），
+          // 不能再挂应用内撤销，否则连续 Cmd+Z 双轨回放会重复正文
+          formatUndoRef.current = null;
           setNotice("已按格式设置整理本页算式");
           return;
         }
@@ -602,6 +607,9 @@ export default function App() {
         // execCommand 不可用时走状态替换
       }
     }
+    // 回退路径：React 状态替换，原生撤销栈没有这条记录，
+    // 记住格式化前的正文，Cmd+Z 在无后续编辑时直接恢复。
+    formatUndoRef.current = { noteId: selected.id, previous: selected.body, formatted };
     update((before) => ({
       ...before,
       notes: before.notes.map((note) =>
@@ -1033,6 +1041,9 @@ export default function App() {
                 <div className="note-tools">
                   <IconButton title="语法速查" onClick={() => setHelpOpen(true)}>
                     <CircleHelp size={16} />
+                  </IconButton>
+                  <IconButton title="查找替换（Cmd+F）" onClick={openFind}>
+                    <Search size={16} />
                   </IconButton>
                   <IconButton title="历史记录" onClick={() => setHistoryOpen(true)}>
                     <CalendarClock size={16} />
