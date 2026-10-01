@@ -95,6 +95,8 @@ struct Stored {
 pub struct FormatSettings {
     #[serde(default)]
     thousands: bool,
+    #[serde(default = "default_true")]
+    result_thousands: bool,
     #[serde(default)]
     unit_space: bool,
     #[serde(default)]
@@ -113,6 +115,7 @@ impl Default for FormatSettings {
     fn default() -> Self {
         FormatSettings {
             thousands: false,
+            result_thousands: true,
             unit_space: false,
             percent_space: false,
             operator_space: true,

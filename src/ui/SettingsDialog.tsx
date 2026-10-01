@@ -19,7 +19,8 @@ const SYSTEM_OPTIONS: { value: FormatSettings["unitSystem"]; label: string }[] =
 ];
 
 const TOGGLES: { key: keyof FormatSettings; label: string; hint: string }[] = [
-  { key: "thousands", label: "千分位逗号", hint: "1,234,567" },
+  { key: "thousands", label: "笔记千分位逗号", hint: "正文 1,234,567" },
+  { key: "resultThousands", label: "结果千分位逗号", hint: "结果列 1,234,567" },
   { key: "unitSpace", label: "数字与单位空格", hint: "100L → 100 L" },
   { key: "percentSpace", label: "百分号前空格", hint: "10% → 10 %" },
   { key: "operatorSpace", label: "运算符两边空格", hint: "+ - × ÷ / =" },

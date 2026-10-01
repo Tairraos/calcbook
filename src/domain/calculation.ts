@@ -245,6 +245,7 @@ export function formatUnitSuffix(
   formatted: string,
   language: ResultLanguage,
   chineseNames: Record<string, string> = {},
+  unitSpacing = true,
 ): string {
   const split = formatted.indexOf(" ");
   if (split === -1) return formatted;
@@ -256,14 +257,15 @@ export function formatUnitSuffix(
       );
     return isKnownUnitLower(token.toLowerCase()) ? token.toLowerCase() : token;
   });
-  const result = formatted.slice(0, split + 1) + suffix;
+  // unitSpacing=false 时数字与单位紧贴（结果区显示约定）；中文分支本就去除中西文间空格
+  const result = formatted.slice(0, unitSpacing ? split + 1 : split) + suffix;
   if (language === "chinese") return result.replace(/ +(\P{ASCII})|(\P{ASCII}) +/gu, "$1$2");
   return result;
 }
 
 // 显示数值：小数最多 4 位（四舍五入），≥1e10 转科学计数法（尾数同为 4 位）。
 // 千位分隔只作用于整数部分——4 位小数会被全串正则误切（666.6667 → 666.6,667）。
-function formatDisplayNumber(numeric: BigNumber | number): string {
+function formatDisplayNumber(numeric: BigNumber | number, thousands = true): string {
   const decimal = isBigNumber(numeric) ? numeric : math.bignumber(numeric);
   const rounded = decimal.toDecimalPlaces(4);
   if (rounded.abs().gte("1e10")) {
@@ -271,7 +273,7 @@ function formatDisplayNumber(numeric: BigNumber | number): string {
   }
   if (rounded.isZero()) return "0";
   const [intPart, decimalPart] = rounded.toFixed().split(".");
-  const grouped = intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  const grouped = thousands ? intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",") : intPart;
   return decimalPart ? `${grouped}.${decimalPart}` : grouped;
 }
 
@@ -279,13 +281,19 @@ export function formatValue(
   value: CalcValue,
   language: ResultLanguage = "lower",
   chineseNames: Record<string, string> = {},
+  options: { unitSpacing?: boolean; thousands?: boolean } = {},
 ): { raw: string; display: string } {
   const raw = formatUnitSuffix(
     math.format(value, { precision: 14, lowerExp: -8, upperExp: 16 }),
     language,
     chineseNames,
   );
-  const display = formatUnitSuffix(math.format(value, formatDisplayNumber), language, chineseNames);
+  const display = formatUnitSuffix(
+    math.format(value, (numeric) => formatDisplayNumber(numeric, options.thousands ?? true)),
+    language,
+    chineseNames,
+    options.unitSpacing ?? true,
+  );
   return { raw, display };
 }
 
@@ -514,7 +522,10 @@ function readableError(error: unknown): string {
   return message;
 }
 
-export function evaluateNotebook(text: string): LineResult[] {
+export function evaluateNotebook(
+  text: string,
+  options: { unitSpacing?: boolean; resultThousands?: boolean } = {},
+): LineResult[] {
   const scope: Scope = new Map();
   const percentages = new Set<string>();
   let block: CalcValue[] = [];
@@ -620,7 +631,10 @@ export function evaluateNotebook(text: string): LineResult[] {
         return {
           source,
           kind: "result",
-          ...formatValue(value, language, chineseNames),
+          ...formatValue(value, language, chineseNames, {
+            unitSpacing: options.unitSpacing ?? true,
+            thousands: options.resultThousands ?? true,
+          }),
         };
       } catch (error) {
         scope.delete("prev");
@@ -645,14 +659,14 @@ export function convertUnitQuantity(value: number, from: string, to: string): nu
 export function calculateInput(expression: string) {
   try {
     const { value, language } = calculate(expression);
-    const display = math.format(value, formatDisplayNumber);
+    const display = math.format(value, (numeric) => formatDisplayNumber(numeric, true));
     return {
       ok: true as const,
       raw: formatUnitSuffix(
         math.format(value, { precision: 64, lowerExp: -8, upperExp: 16 }),
         language,
       ),
-      display: formatUnitSuffix(display, language),
+      display: formatUnitSuffix(display, language, {}, false),
     };
   } catch (error) {
     return { ok: false as const, error: readableError(error) };

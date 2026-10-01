@@ -18,7 +18,8 @@ export type UnitStyle = (typeof UNIT_STYLES)[number];
 export type UnitSystemSetting = (typeof UNIT_SYSTEMS)[number];
 
 export type FormatSettings = {
-  thousands: boolean; // 数字千分位逗号
+  thousands: boolean; // 笔记正文的数字千分位逗号（格式化时写入正文）
+  resultThousands: boolean; // 结果区域的数字千分位逗号（只影响显示，立即生效）
   unitSpace: boolean; // 数字和单位之间空格
   percentSpace: boolean; // 数字和百分号之间空格
   operatorSpace: boolean; // 运算符（+ - * / =）两边空格
@@ -29,6 +30,7 @@ export type FormatSettings = {
 
 export const DEFAULT_FORMAT_SETTINGS: FormatSettings = {
   thousands: false,
+  resultThousands: true,
   unitSpace: false,
   percentSpace: false,
   operatorSpace: true,
@@ -65,6 +67,7 @@ export function parseFormatSettings(input: unknown): FormatSettings {
       : fallback;
   return {
     thousands: bool(record.thousands, DEFAULT_FORMAT_SETTINGS.thousands),
+    resultThousands: bool(record.resultThousands, DEFAULT_FORMAT_SETTINGS.resultThousands),
     unitSpace: bool(record.unitSpace, DEFAULT_FORMAT_SETTINGS.unitSpace),
     percentSpace: bool(record.percentSpace, DEFAULT_FORMAT_SETTINGS.percentSpace),
     operatorSpace: bool(record.operatorSpace, DEFAULT_FORMAT_SETTINGS.operatorSpace),

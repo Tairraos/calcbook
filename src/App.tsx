@@ -98,7 +98,13 @@ export default function App() {
   const selected =
     notes.find((note) => note.id === workspace?.activeId && note.trashed === trashView) ??
     notes.find((note) => note.trashed === trashView);
-  const results = useMemo(() => evaluateNotebook(selected?.body ?? ""), [selected?.body]);
+  // 结果区显示设置（千分位、数字与单位空格）改动立即生效：作为 evaluateNotebook 参数参与 memo 依赖
+  const resultThousands = workspace?.format.resultThousands ?? true;
+  const resultUnitSpacing = workspace?.format.unitSpace ?? false;
+  const results = useMemo(
+    () => evaluateNotebook(selected?.body ?? "", { unitSpacing: resultUnitSpacing, resultThousands }),
+    [selected?.body, resultThousands, resultUnitSpacing],
+  );
   const resultCount = results.filter((line) => line.kind === "result").length;
   const errorCount = results.filter((line) => line.kind === "error").length;
 
