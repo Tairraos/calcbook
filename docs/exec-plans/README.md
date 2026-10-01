@@ -4,6 +4,6 @@
 
 复杂工作在 active 中记录目标、验收、决策、进度与实际验证证据。完成后移入 completed；未完成项进入有原因和触发条件的债务表。小修复不强制新建计划。
 
-当前：[0001 · Harness 与可运行首版](active/0001-bootstrap.md)。
+当前：[0001 · Harness 与可运行首版](active/0001-bootstrap.md)；[0002 · 笔记内查找替换](active/0002-find-replace.md)（待启动）。
 
 [技术债务与后续路线](tech-debt.md) 持续更新。
