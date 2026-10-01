@@ -230,6 +230,12 @@ export default function App() {
     editorRef.current?.focus();
   }, []);
 
+  // 笔记工具行的查找图标是开关：浮动条开着时再点即关闭
+  const toggleFind = useCallback(() => {
+    if (findOpen) closeFind();
+    else openFind();
+  }, [findOpen, closeFind, openFind]);
+
   // 编辑器内按 Esc 也关闭浮动条（查找/替换输入框的 Esc 由组件自行处理）
   useEffect(() => {
     if (!findOpen) return;
@@ -1013,7 +1019,7 @@ export default function App() {
             <BookOpen size={15} />
             <span>{trashView ? "废纸篓" : "我的笔记"}</span>
             <ChevronRight size={13} />
-            <strong>{selected?.title || "新的一页"}</strong>
+            <strong>{selected?.title || (trashView ? "空" : "新的一页")}</strong>
           </div>
           <div className="topbar-actions">
             {status === "error" ? (
@@ -1075,7 +1081,10 @@ export default function App() {
                   <IconButton title="语法速查" onClick={() => setHelpOpen(true)}>
                     <CircleHelp size={16} />
                   </IconButton>
-                  <IconButton title="查找替换（Cmd+F）" onClick={openFind}>
+                  <IconButton
+                    title={findOpen ? "关闭查找替换（Esc）" : "查找替换（Cmd+F）"}
+                    onClick={toggleFind}
+                  >
                     <Search size={16} />
                   </IconButton>
                   <IconButton title="历史记录" onClick={() => setHistoryOpen(true)}>
@@ -1192,19 +1201,25 @@ export default function App() {
                 <span className="status-dot" />
                 {resultCount} 条计算
                 {errorCount > 0 && (
-                  <button
-                    type="button"
-                    className="error-count"
-                    title="点击依次定位到每个错误行（光标停行尾，循环）"
-                    onClick={gotoNextError}
-                  >
-                    · {errorCount} 处待检查
-                  </button>
+                  <>
+                    <span className="statusbar-sep">|</span>
+                    <button
+                      type="button"
+                      className="error-count"
+                      title="点击依次定位到每个错误行（光标停行尾，循环）"
+                      onClick={gotoNextError}
+                    >
+                      {errorCount} 处待检查
+                    </button>
+                  </>
                 )}
                 {activeError && (
-                  <span className="error-detail">
-                    第 {activeErrorOrdinal} 处：{activeError.error}
-                  </span>
+                  <>
+                    <span className="statusbar-sep">|</span>
+                    <span className="error-detail">
+                      第 {activeErrorOrdinal} 处：{activeError.error}
+                    </span>
+                  </>
                 )}
               </span>
               <span>
@@ -1219,10 +1234,13 @@ export default function App() {
             <BookOpen size={38} strokeWidth={1.2} />
             <h1>{trashView ? "没有被丢下的想法" : "给思路一张白纸。"}</h1>
             <p>{trashView ? "移入废纸篓的笔记会保留在这里。" : "从一个数字，或一个想法开始。"}</p>
-            <button type="button" className="primary-button" onClick={() => void newNote()}>
-              <Plus size={16} />
-              新建笔记
-            </button>
+            {/* 废纸篓不接受新建：只能由笔记删除过来，空态只说明不留入口 */}
+            {!trashView && (
+              <button type="button" className="primary-button" onClick={() => void newNote()}>
+                <Plus size={16} />
+                新建笔记
+              </button>
+            )}
           </div>
         )}
       </main>
