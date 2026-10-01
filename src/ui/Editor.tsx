@@ -1,6 +1,11 @@
 // biome-ignore-all lint/suspicious/noArrayIndexKey: This stateless text mirror is keyed by line/token position to preserve the native textarea.
 import { Check, Copy, TriangleAlert } from "lucide-react";
-import { type RefObject, useEffect, useState } from "react";
+import {
+  type KeyboardEvent as ReactKeyboardEvent,
+  type RefObject,
+  useEffect,
+  useState,
+} from "react";
 import type { LineResult } from "../domain/calculation.ts";
 import { MAX_NOTE_LENGTH } from "../domain/notebook.ts";
 
@@ -13,7 +18,14 @@ type Props = {
   onActiveLine: (line: number) => void;
   editorRef: RefObject<HTMLTextAreaElement | null>;
   readOnly?: boolean;
+  // 一次性删除 5 行以上（大选区剪切/删除）时先回调，用于破坏性操作前留档。
+  onDestructiveChange?: () => void;
 };
+
+const writeToClipboard = (text: string): Promise<void> =>
+  typeof navigator.clipboard?.writeText === "function"
+    ? navigator.clipboard.writeText(text)
+    : Promise.reject(new Error("剪贴板不可用"));
 
 function Highlight({ line }: { line: LineResult }) {
   if (line.kind === "note") return <span className="syntax-comment">{line.source}</span>;
@@ -53,6 +65,7 @@ export function Editor({
   onActiveLine,
   editorRef,
   readOnly,
+  onDestructiveChange,
 }: Props) {
   const [scrollLeft, setScrollLeft] = useState(0);
   const [copiedLine, setCopiedLine] = useState<number | null>(null);
@@ -81,6 +94,53 @@ export function Editor({
     if (next.length > MAX_NOTE_LENGTH) return;
     setPendingCaret(start + symbol.length);
     onChange(next);
+  }
+  // 一次性删除 5 行以上（选区跨 5 个换行）属于破坏性操作：剪切/删除发生前先留档。
+  const maybeRecordDestructive = (textarea: HTMLTextAreaElement) => {
+    const { selectionStart, selectionEnd, value } = textarea;
+    if (selectionStart === selectionEnd) return;
+    if (value.slice(selectionStart, selectionEnd).split("\n").length >= 5) onDestructiveChange?.();
+  };
+  // 无选区时 Cmd/Ctrl+C 复制整行、Cmd/Ctrl+X 剪切整行（含行尾换行）；有选区走原生行为。
+  // 剪切删除走「选中整行 + execCommand」，保留 textarea 原生撤销栈。
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
+    const textarea = event.currentTarget;
+    if (event.nativeEvent.isComposing) return;
+    // 大选区删除（Delete/Backspace）与 Cmd/Ctrl+X 有选区剪切：先留档再放行
+    if (!event.metaKey && !event.ctrlKey && (event.key === "Delete" || event.key === "Backspace")) {
+      if (!readOnly) maybeRecordDestructive(textarea);
+      return;
+    }
+    if (event.shiftKey || !(event.metaKey || event.ctrlKey)) return;
+    const key = event.key.toLowerCase();
+    if (key === "x" && textarea.selectionStart !== textarea.selectionEnd) {
+      if (!readOnly) maybeRecordDestructive(textarea);
+      return; // 有选区剪切交给 onCut / 原生行为
+    }
+    if ((key !== "c" && key !== "x") || textarea.selectionStart !== textarea.selectionEnd) return;
+    const value = textarea.value;
+    const caret = textarea.selectionStart;
+    const start = value.lastIndexOf("\n", caret - 1) + 1;
+    const newline = value.indexOf("\n", caret);
+    const textEnd = newline === -1 ? value.length : newline;
+    const line = value.slice(start, textEnd);
+    if (key === "c") {
+      event.preventDefault();
+      writeToClipboard(line).catch(() => {
+        // 写剪贴板失败：临时选中整行退回原生复制，随后恢复光标
+        textarea.setSelectionRange(start, textEnd);
+        document.execCommand("copy");
+        textarea.setSelectionRange(caret, caret);
+      });
+      return;
+    }
+    if (readOnly) return;
+    event.preventDefault();
+    // 剪切进剪贴板的内容带行尾换行：粘贴时整行落位，不必手动补换行
+    const cutText = value.slice(start, newline === -1 ? value.length : newline + 1);
+    void writeToClipboard(cutText).catch(() => {});
+    textarea.setSelectionRange(start, newline === -1 ? value.length : newline + 1);
+    if (!document.execCommand("delete")) textarea.setSelectionRange(caret, caret);
   }
   return (
     <div className="editor-scroll">
@@ -149,6 +209,11 @@ export function Editor({
             onChange={(event) => {
               onChange(event.target.value);
               selectLine(event.target);
+            }}
+            onKeyDown={handleKeyDown}
+            onCut={(event) => {
+              // 右键菜单剪切与有选区的 Cmd/Ctrl+X 都走原生 cut 事件
+              if (!readOnly) maybeRecordDestructive(event.currentTarget);
             }}
             onSelect={(event) => selectLine(event.currentTarget)}
             onClick={(event) => selectLine(event.currentTarget)}

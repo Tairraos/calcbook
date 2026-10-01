@@ -1,9 +1,9 @@
 import { emit, listen } from "@tauri-apps/api/event";
 import {
   ArrowDownToLine,
-  ArrowUpFromLine,
   BookOpen,
   Calculator as CalculatorIcon,
+  CalendarClock,
   Check,
   ChevronRight,
   CircleHelp,
@@ -30,11 +30,12 @@ import type { FormatSettings } from "./domain/formatting.ts";
 import { formatNoteBody } from "./domain/formatting.ts";
 import {
   createNote,
+  DEFAULT_HISTORY_LIMIT_KB,
+  type HistoryEntry,
   MAX_NOTE_LENGTH,
   MAX_NOTES,
   MAX_TITLE_LENGTH,
   type Note,
-  withHeading,
 } from "./domain/notebook.ts";
 import {
   CALCULATOR_INSERT_EVENT,
@@ -43,13 +44,17 @@ import {
   CALCULATOR_VISIBILITY_EVENT,
   calculatorStatus,
   createNoteFile,
+  deleteHistoryFile,
   downloadText,
   enableTitleDragRegions,
   ensureNoteFile,
   hasNativeTitlebar,
-  importNoteFile,
   isDesktopApp,
+  listHistory,
+  localHourPrefix,
+  localTimestamp,
   openProject,
+  recordHistoryFile,
   revealNoteFile,
   saveWindowSize,
   toggleCalculator,
@@ -57,6 +62,7 @@ import {
 import { Dialog } from "./ui/Dialog.tsx";
 import { Editor } from "./ui/Editor.tsx";
 import { HelpDialog } from "./ui/HelpDialog.tsx";
+import { HistoryDialog, historyLabel } from "./ui/HistoryDialog.tsx";
 import { IconButton } from "./ui/IconButton.tsx";
 import { SettingsDialog } from "./ui/SettingsDialog.tsx";
 import { useWorkspace } from "./useWorkspace.ts";
@@ -65,8 +71,10 @@ const date = (value: string) =>
   new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric" }).format(new Date(value));
 
 export default function App() {
-  const { workspace, update, status, error, load, flush, storage, changeDirectory } =
-    useWorkspace();
+  // 关闭前留档：闭包经 ref 传递，指向最新的记录函数（见 recordCurrentRef）。
+  const recordCurrentRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  const { workspace, update, status, error, load, flush, renameNote, storage, changeDirectory } =
+    useWorkspace({ beforeClose: () => recordCurrentRef.current() });
   const [query, setQuery] = useState("");
   const [trashView, setTrashView] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -78,7 +86,6 @@ export default function App() {
   const [notice, setNotice] = useState("");
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
   const activeLineRef = useRef(0);
 
   const notes = workspace?.notes ?? [];
@@ -158,25 +165,37 @@ export default function App() {
     [workspace?.notes.length, resetActiveLine, update],
   );
 
-  function patchNote(patch: Partial<Pick<Note, "body" | "title" | "trashed">>) {
+  function patchNote(patch: Pick<Note, "body">) {
     if (!selected) return;
     // 用户手动编辑后，格式化的应用内撤销作废
     if (patch.body !== undefined && patch.body !== formatUndoRef.current?.formatted)
       formatUndoRef.current = null;
-    // 标题保存在文件首行 `# 标题`：改标题同步正文首行
-    const synced =
-      patch.title !== undefined
-        ? { ...patch, body: withHeading(patch.body ?? selected.body, patch.title) }
-        : patch;
     update((before) => ({
       ...before,
       notes: before.notes.map((note) =>
-        note.id === selected.id
-          ? { ...note, ...synced, updatedAt: new Date().toISOString() }
-          : note,
+        note.id === selected.id ? { ...note, ...patch, updatedAt: new Date().toISOString() } : note,
       ),
     }));
   }
+
+  // 标题即文件名（无扩展名）：输入只改草稿（按笔记 id 键控，换笔记自动失效），
+  // 失焦或回车提交改名，Escape 放弃。ref 镜像保证 Escape 后同步失焦时
+  // onBlur 读到的是已放弃的草稿，而不是重渲染前的旧闭包值。
+  const [titleDraft, setTitleDraftState] = useState<{ id: string; value: string } | null>(null);
+  const titleDraftRef = useRef(titleDraft);
+  const setTitleDraft = useCallback((next: { id: string; value: string } | null) => {
+    titleDraftRef.current = next;
+    setTitleDraftState(next);
+  }, []);
+  const draft = titleDraft && selected && titleDraft.id === selected.id ? titleDraft.value : null;
+  const commitTitle = useCallback(() => {
+    const current = titleDraftRef.current;
+    setTitleDraft(null);
+    if (!current || !selected || selected.trashed) return;
+    const name = current.value.trim();
+    if (!name || name === selected.title) return;
+    void renameNote(selected.id, name);
+  }, [selected, renameNote, setTitleDraft]);
 
   function restoreNote() {
     if (!selected) return;
@@ -191,6 +210,102 @@ export default function App() {
     resetActiveLine();
     setNotice("笔记已恢复");
   }
+
+  // 编辑历史：文件名是秒级时间戳（`年-月-日-时-分-秒.txt`），同小时可有多份；
+  // 记录时机四类——有实质编辑后每 10 分钟、切换笔记、关闭应用、破坏性操作前。
+  // 「有效编辑」以最近一次留档内容为基线，内容未变不重复备份；超过一小时的部分
+  // 由存储层按小时整理成一份整点快照，单篇总量 1 MB 上限。
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const historyBaseline = useRef(new Map<string, string>());
+  const lastSelectedRef = useRef<{ id: string; body: string } | null>(null);
+  const recordNoteHistory = useCallback(
+    (noteId: string, body: string): Promise<void> => {
+      const note = workspace?.notes.find((item) => item.id === noteId);
+      if (!note || note.trashed) return Promise.resolve();
+      // 仅空行与空格视为空文件，存历史也没有内容可回溯，不留档；有文字或数字都算实质内容
+      if (!body.trim()) return Promise.resolve();
+      if (historyBaseline.current.get(noteId) === body) return Promise.resolve();
+      historyBaseline.current.set(noteId, body);
+      return recordHistoryFile(
+        noteId,
+        serializeNoteBody(body),
+        localTimestamp(),
+        (workspace?.historyLimitKB ?? DEFAULT_HISTORY_LIMIT_KB) * 1024,
+      ).catch(() => {
+        setNotice("历史记录失败，请稍后重试。");
+      });
+    },
+    [workspace],
+  );
+  // 切换笔记：先给旧笔记留档，再给新笔记建立基线（无基线时以加载内容为基线）。
+  useEffect(() => {
+    const current = selected ? { id: selected.id, body: selected.body } : null;
+    const previous = lastSelectedRef.current;
+    if (previous && current && previous.id !== current.id)
+      void recordNoteHistory(previous.id, previous.body);
+    if (current && !historyBaseline.current.has(current.id))
+      historyBaseline.current.set(current.id, current.body);
+    lastSelectedRef.current = current;
+  }, [selected, recordNoteHistory]);
+  // 有实质编辑后每 10 分钟更新一次历史（秒级文件名，同小时可有多份）；interval 用 ref 读最新记录函数。
+  const recordRef = useRef(recordNoteHistory);
+  recordRef.current = recordNoteHistory;
+  recordCurrentRef.current = () => {
+    const current = lastSelectedRef.current;
+    return current ? recordRef.current(current.id, current.body) : Promise.resolve();
+  };
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const current = lastSelectedRef.current;
+      if (current) void recordRef.current(current.id, current.body);
+    }, 600_000);
+    return () => clearInterval(timer);
+  }, []);
+  // 恢复历史：当前内容先留档（未变则跳过，会得到独立的秒级快照），
+  // 再把历史内容加载进编辑器，并刷新列表反映最新快照。
+  // 恢复不算用户编辑，格式化的应用内撤销作废。
+  const refreshHistory = useCallback(() => {
+    if (!selected) return;
+    void listHistory(selected.id, localHourPrefix())
+      .then((list) => setHistoryEntries(list))
+      .catch(() => setHistoryEntries([]));
+  }, [selected]);
+  const restoreHistory = useCallback(
+    (entry: HistoryEntry) => {
+      if (!selected) return;
+      void recordNoteHistory(selected.id, selected.body);
+      const body = parseNoteBody(entry.content);
+      historyBaseline.current.set(selected.id, body);
+      formatUndoRef.current = null;
+      update((before) => ({
+        ...before,
+        notes: before.notes.map((note) =>
+          note.id === selected.id ? { ...note, body, updatedAt: new Date().toISOString() } : note,
+        ),
+      }));
+      refreshHistory();
+      setNotice(`已恢复到 ${historyLabel(entry.name)}`);
+    },
+    [selected, recordNoteHistory, update, refreshHistory],
+  );
+  // 打开历史弹窗时加载当前笔记的历史列表（UI 组件不直接读存储层）。
+  const [historyEntries, setHistoryEntries] = useState<HistoryEntry[] | null>(null);
+  const activeNoteId = selected?.id ?? null;
+  useEffect(() => {
+    if (!historyOpen || !activeNoteId) return;
+    let disposed = false;
+    setHistoryEntries(null);
+    void listHistory(activeNoteId, localHourPrefix())
+      .then((list) => {
+        if (!disposed) setHistoryEntries(list);
+      })
+      .catch(() => {
+        if (!disposed) setHistoryEntries([]);
+      });
+    return () => {
+      disposed = true;
+    };
+  }, [historyOpen, activeNoteId]);
 
   const copy = useCallback(async (text: string) => {
     try {
@@ -228,38 +343,6 @@ export default function App() {
     setNotice("算式已写入笔记");
   }
 
-  // 导出与保存同构：算式行都带 "= 结果"，可直接用 Numi 打开。
-  async function exportNote() {
-    if (!selected) return;
-    try {
-      if (
-        await downloadText(
-          `${selected.title || "未命名笔记"}.txt`,
-          serializeNoteBody(selected.body),
-        )
-      )
-        setNotice("已导出文本笔记（含结果）");
-    } catch {
-      setNotice("导出失败，请重试。");
-    }
-  }
-
-  // 桌面版走原生对话框导入 Numi 的 .txt；浏览器预览退回隐藏的 file input。
-  async function importNote() {
-    if (!isDesktopApp) {
-      fileRef.current?.click();
-      return;
-    }
-    try {
-      const imported = await importNoteFile();
-      if (!imported) return;
-      if (await newNote(imported.title.slice(0, MAX_TITLE_LENGTH), imported.body))
-        setNotice("笔记已导入");
-    } catch {
-      setNotice("导入失败，请重试。");
-    }
-  }
-
   const handleActiveLine = useCallback((line: number) => {
     activeLineRef.current = line;
     setActiveLine(line);
@@ -275,10 +358,17 @@ export default function App() {
     y: number;
   } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<
-    { mode: "all"; count: number } | { mode: "one"; noteId: string; title: string } | null
+    | { mode: "all"; count: number }
+    | { mode: "one"; noteId: string; title: string }
+    | { mode: "trash"; noteId: string; title: string }
+    | null
   >(null);
   const changeFormat = useCallback(
     (format: FormatSettings) => update((before) => ({ ...before, format })),
+    [update],
+  );
+  const changeHistoryLimit = useCallback(
+    (historyLimitKB: number) => update((before) => ({ ...before, historyLimitKB })),
     [update],
   );
   // 格式化整篇：按当前格式设置重排所有行（含注释与空格规范）。
@@ -290,6 +380,8 @@ export default function App() {
       setNotice("格式已是最新的。");
       return;
     }
+    // 格式化是破坏性操作：整理前的内容先留档进历史
+    void recordNoteHistory(selected.id, selected.body);
     // 应用内撤销：格式化走 React 状态替换，原生撤销栈不可靠，
     // 记住格式化前的正文，Cmd+Z 在无后续编辑时直接恢复。
     formatUndoRef.current = { noteId: selected.id, previous: selected.body, formatted };
@@ -315,7 +407,7 @@ export default function App() {
       ),
     }));
     setNotice("已按格式设置整理本页算式");
-  }, [selected, workspace, update]);
+  }, [selected, workspace, update, recordNoteHistory]);
 
   // 右键菜单：定位（Finder）/导出/删除到废纸篓
   const closeNoteMenu = useCallback(() => setNoteMenu(null), []);
@@ -513,18 +605,21 @@ export default function App() {
       <aside className="sidebar" aria-label="笔记导航">
         <div className="sidebar-inner">
           <div className="brand" data-tauri-drag-region>
-            <img
-              src={logoLight}
-              className="brand-logo brand-light"
-              alt="calcbook"
-              draggable={false}
-            />
-            <img
-              src={logoDark}
-              className="brand-logo brand-dark"
-              alt="calcbook"
-              draggable={false}
-            />
+            <span className="brand-logo-wrap">
+              <img
+                src={logoLight}
+                className="brand-logo brand-light"
+                alt="calcbook"
+                draggable={false}
+              />
+              <img
+                src={logoDark}
+                className="brand-logo brand-dark"
+                alt="calcbook"
+                draggable={false}
+              />
+              <span className="brand-version">v{__APP_VERSION__}</span>
+            </span>
           </div>
           <div className="search-field">
             <Search size={15} />
@@ -597,7 +692,7 @@ export default function App() {
                 onClick={() => {
                   update((before) => ({ ...before, activeId: note.id }));
                   resetActiveLine();
-                  if (isDesktopApp) void ensureNoteFile(note.id, note.title);
+                  if (isDesktopApp) void ensureNoteFile(note.id);
                 }}
                 onContextMenu={(event) => {
                   event.preventDefault();
@@ -729,11 +824,8 @@ export default function App() {
                   <IconButton title="语法速查" onClick={() => setHelpOpen(true)}>
                     <CircleHelp size={16} />
                   </IconButton>
-                  <IconButton title="导入文本笔记" onClick={() => void importNote()}>
-                    <ArrowUpFromLine size={16} />
-                  </IconButton>
-                  <IconButton title="导出当前笔记" onClick={() => void exportNote()}>
-                    <ArrowDownToLine size={16} />
+                  <IconButton title="历史记录" onClick={() => setHistoryOpen(true)}>
+                    <CalendarClock size={16} />
                   </IconButton>
                   {selected.trashed ? (
                     <>
@@ -756,19 +848,13 @@ export default function App() {
                   ) : (
                     <IconButton
                       title="移到废纸篓"
-                      onClick={() => {
-                        const id = selected.id;
-                        update((before) => ({
-                          ...before,
-                          notes: before.notes.map((note) =>
-                            note.id === id ? { ...note, trashed: true } : note,
-                          ),
-                          activeId:
-                            before.notes.find((note) => !note.trashed && note.id !== id)?.id ??
-                            null,
-                        }));
-                        setNotice("已移到废纸篓，可随时恢复");
-                      }}
+                      onClick={() =>
+                        setConfirmDelete({
+                          mode: "trash",
+                          noteId: selected.id,
+                          title: selected.title,
+                        })
+                      }
                     >
                       <Trash2 size={16} />
                     </IconButton>
@@ -778,11 +864,21 @@ export default function App() {
               <input
                 className="note-title"
                 aria-label="笔记标题"
-                value={selected.title}
+                title="标题即文件名；回车或移开焦点后生效"
+                value={draft ?? selected.title}
                 placeholder="未命名笔记"
                 maxLength={MAX_TITLE_LENGTH}
                 readOnly={selected.trashed}
-                onChange={(event) => patchNote({ title: event.target.value })}
+                onChange={(event) => setTitleDraft({ id: selected.id, value: event.target.value })}
+                onBlur={commitTitle}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.currentTarget.blur();
+                  if (event.key === "Escape") {
+                    // 放弃草稿：回落到当前标题，失焦后不会提交
+                    setTitleDraft(null);
+                    event.currentTarget.blur();
+                  }
+                }}
               />
             </div>
             {selected.trashed && (
@@ -799,6 +895,9 @@ export default function App() {
               results={results}
               onChange={(body) => patchNote({ body })}
               onCopy={(text) => void copy(text)}
+              onDestructiveChange={() => {
+                if (selected) void recordNoteHistory(selected.id, selected.body);
+              }}
               activeLine={activeLine}
               onActiveLine={handleActiveLine}
               editorRef={editorRef}
@@ -881,34 +980,53 @@ export default function App() {
       {confirmDelete && (
         <Dialog
           className="confirm-dialog"
-          label="永久删除确认"
+          label={confirmDelete.mode === "trash" ? "移到废纸篓确认" : "永久删除确认"}
           onClose={() => setConfirmDelete(null)}
         >
           <div className="settings-heading">
             <div>
-              <h2>永久删除</h2>
+              <h2>{confirmDelete.mode === "trash" ? "移到废纸篓" : "永久删除"}</h2>
               <p>
                 {confirmDelete.mode === "all"
                   ? `将永久删除废纸篓里的 ${confirmDelete.count} 篇笔记及其文件，无法恢复。`
-                  : `将永久删除「${confirmDelete.title || "未命名笔记"}」及其文件，无法恢复。`}
+                  : confirmDelete.mode === "trash"
+                    ? `将把「${confirmDelete.title || "未命名笔记"}」移到废纸篓，可随时恢复。`
+                    : `将永久删除「${confirmDelete.title || "未命名笔记"}」及其文件，无法恢复。`}
               </p>
             </div>
           </div>
           <div className="settings-footer">
-            <span role="note">对应的 .txt 文件也会一并删除。</span>
+            <span role="note">
+              {confirmDelete.mode === "trash"
+                ? "废纸篓里的笔记不会参与计算，也不会自动留历史。"
+                : "对应的 .txt 文件也会一并删除。"}
+            </span>
             <button
               type="button"
               className="primary-button danger-button"
               onClick={() => {
-                permanentDelete(
-                  confirmDelete.mode === "all"
-                    ? notes.filter((note) => note.trashed).map((note) => note.id)
-                    : [confirmDelete.noteId],
-                );
+                if (confirmDelete.mode === "trash") {
+                  const id = confirmDelete.noteId;
+                  update((before) => ({
+                    ...before,
+                    notes: before.notes.map((note) =>
+                      note.id === id ? { ...note, trashed: true } : note,
+                    ),
+                    activeId:
+                      before.notes.find((note) => !note.trashed && note.id !== id)?.id ?? null,
+                  }));
+                  setNotice("已移到废纸篓，可随时恢复");
+                } else {
+                  permanentDelete(
+                    confirmDelete.mode === "all"
+                      ? notes.filter((note) => note.trashed).map((note) => note.id)
+                      : [confirmDelete.noteId],
+                  );
+                }
                 setConfirmDelete(null);
               }}
             >
-              永久删除
+              {confirmDelete.mode === "trash" ? "移到废纸篓" : "永久删除"}
             </button>
           </div>
         </Dialog>
@@ -920,6 +1038,8 @@ export default function App() {
           canChooseDirectory={storage.canChoose}
           format={workspace.format}
           onChangeFormat={changeFormat}
+          historyLimitKB={workspace.historyLimitKB}
+          onChangeHistoryLimit={changeHistoryLimit}
           version={__APP_VERSION__}
           buildTime={__BUILD_TIME__}
           githubUrl={__GITHUB_URL__}
@@ -930,34 +1050,23 @@ export default function App() {
           onClose={() => setSettingsOpen(false)}
         />
       )}
-      <input
-        type="file"
-        className="visually-hidden"
-        ref={fileRef}
-        accept=".txt,.md,.numi,text/plain,text/markdown"
-        aria-label="选择要导入的文本笔记"
-        tabIndex={-1}
-        onChange={async (event) => {
-          const file = event.target.files?.[0];
-          event.target.value = "";
-          if (!file) return;
-          if (file.size > MAX_NOTE_LENGTH * 4) {
-            setNotice("文件过大，单篇笔记最多 10 万字符。");
-            return;
+      {historyOpen && selected && (
+        <HistoryDialog
+          entries={historyEntries}
+          onClose={() => setHistoryOpen(false)}
+          onRestore={restoreHistory}
+          onDelete={(entry) =>
+            deleteHistoryFile(selected.id, entry.name)
+              .then(() => {
+                setNotice(`已删除 ${historyLabel(entry.name)} 的历史`);
+                void listHistory(selected.id, localHourPrefix())
+                  .then((list) => setHistoryEntries(list))
+                  .catch(() => setHistoryEntries([]));
+              })
+              .catch(() => setNotice("删除历史失败，请稍后重试。"))
           }
-          try {
-            const body = await file.text();
-            if (body.length > MAX_NOTE_LENGTH || body.includes("\0")) throw new Error("invalid");
-            const imported = await newNote(
-              file.name.replace(/\.[^.]+$/, "").slice(0, MAX_TITLE_LENGTH),
-              parseNoteBody(body),
-            );
-            if (imported) setNotice("笔记已导入");
-          } catch {
-            setNotice("无法读取文件，请选择 UTF-8 纯文本笔记。");
-          }
-        }}
-      />
+        />
+      )}
       {notice && (
         <div className="toast" role="status">
           <Check size={15} />

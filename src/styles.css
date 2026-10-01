@@ -7,6 +7,28 @@
 * {
   box-sizing: border-box;
 }
+/* 全局 webkit 滚动条（全站唯一来源，刻意不写 scrollbar-width/color 标准属性）：
+   新版 WebKit/Chromium 一旦看到标准属性就必须忽略 ::-webkit-scrollbar，
+   回落到平台渲染——macOS 上是跟随系统的亮色粗条，在深色主题里刺眼且颜色失控。
+   只写伪元素时两条渲染引擎都稳定走这里的自绘样式。8px 滑块含 2px 透明边，
+   视觉约 4px 细条。例外：note-list 3px 极细条、calc-history-sidebar 隐藏。 */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner,
+::-webkit-resizer {
+  background: transparent;
+}
 html,
 body,
 #root {
@@ -122,7 +144,7 @@ input::placeholder {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 26px 10px 14px;
+  padding: 26px 10px 3px;
   background: var(--sidebar);
   border-right: 1px solid var(--border);
 }
@@ -131,6 +153,23 @@ input::placeholder {
   align-items: center;
   gap: 8px;
   margin: 0 8px 10px 10px;
+}
+/* 字标右上角的版本小字：启动即可辨认构建版本。 */
+.brand-logo-wrap {
+  position: relative;
+  display: block;
+  line-height: 0;
+}
+.brand-version {
+  position: absolute;
+  top: -6px;
+  right: -25px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  line-height: 1;
+  color: var(--muted);
+  user-select: none;
 }
 .brand-logo {
   display: block;
@@ -183,7 +222,7 @@ input::placeholder {
 }
 .workspace-name div > span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.2px;
 }
 .search-field {
@@ -243,28 +282,36 @@ kbd {
 }
 .count-badge {
   margin-left: auto;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 500;
 }
 .notebook-list-heading {
   display: flex;
-  align-items: center;
+  /* tab 按钮底边贴住本行下边线（按钮无下边框，下边线即其下边框） */
+  align-items: flex-end;
   justify-content: space-between;
   padding: 0 6px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.6px;
+  border-bottom: 1px solid var(--border);
 }
 /* 「我的笔记 / 废纸篓」两个 tab 切换下方文件列表；当前项用墨色加重表达。 */
 .notebook-tabs {
   display: flex;
   gap: 2px;
 }
+/* 右侧动作图标不随 tab 贴底，保持垂直居中 */
+.heading-actions {
+  align-self: center;
+}
 .notebook-tabs > button {
   padding: 3px 8px;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-bottom: 0;
   color: var(--muted);
+  border-top-left-radius: 5px;
+  border-top-right-radius: 5px;
 }
 .notebook-tabs > button:hover {
   color: var(--ink);
@@ -291,7 +338,6 @@ kbd {
   overflow: auto;
   margin: 0 -3px 8px -1px;
   padding: 1px;
-  scrollbar-width: thin;
 }
 /* 极细滚动条画进侧栏右侧留白，不压缩卡片内容；静止时隐藏，悬停列表才出现。 */
 .note-list::-webkit-scrollbar {
@@ -305,7 +351,7 @@ kbd {
   border-radius: 3px;
 }
 .note-list:hover::-webkit-scrollbar-thumb {
-  background: var(--strong-border);
+  background: var(--scroll-thumb);
 }
 .note-card {
   display: flex;
@@ -345,7 +391,7 @@ kbd {
 }
 .note-preview {
   margin-left: 23px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--muted);
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -380,8 +426,8 @@ kbd {
 .settings-entry > button:not(.theme-toggle) {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 9px 6px;
+  gap: 6px;
+  padding: 8px 6px;
   flex: 1;
   min-width: 0;
   border-radius: 5px;
@@ -451,7 +497,7 @@ kbd {
   align-items: center;
   gap: 4px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
 }
 .save-status svg {
@@ -527,7 +573,7 @@ kbd {
   display: flex;
   align-items: center;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   white-space: nowrap;
 }
 .note-type {
@@ -548,8 +594,6 @@ kbd {
   min-height: 140px;
   flex: 1;
   margin: 0 26px;
-  scrollbar-width: thin;
-  scrollbar-color: var(--strong-border) transparent;
 }
 .editor-columns-label {
   position: sticky;
@@ -562,7 +606,7 @@ kbd {
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.7px;
   background: var(--paper);
 }
@@ -744,7 +788,7 @@ kbd {
   align-items: center;
   gap: 4px;
   color: var(--error);
-  font-size: 11px;
+  font-size: 12px;
   cursor: help;
   padding: 0 8px;
 }
@@ -775,7 +819,7 @@ kbd {
   align-items: center;
   gap: 7px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   padding: 0;
 }
 .syntax-hint:hover {
@@ -806,10 +850,10 @@ kbd {
   justify-content: space-between;
   gap: 8px;
   padding: 0 24px;
-  height: 34px;
+  height: 40px;
   flex-shrink: 0;
   border-top: 1px solid var(--border);
-  font-size: 10px;
+  font-size: 12px;
   color: var(--muted);
 }
 .statusbar > span {
@@ -928,7 +972,7 @@ kbd {
   justify-content: space-between;
   color: var(--green);
   opacity: 0.8;
-  font-size: 11px;
+  font-size: 12px;
   letter-spacing: 0.5px;
   margin-bottom: 16px;
 }
@@ -968,7 +1012,7 @@ kbd {
   line-height: 1.5;
 }
 .calc-error {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--error);
   min-height: 14px;
   padding-bottom: 4px;
@@ -1027,7 +1071,7 @@ kbd {
   justify-content: space-between;
   height: 41px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .calc-history-heading > span {
   display: flex;
@@ -1053,7 +1097,7 @@ kbd {
 .history-empty {
   min-height: 80px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1190,8 +1234,6 @@ kbd {
   box-shadow: 0 24px 100px #0003;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: var(--strong-border) transparent;
 }
 .dialog::backdrop {
   background: #00000066;
@@ -1204,25 +1246,133 @@ kbd {
 .help-dialog {
   width: 650px;
   height: 565px;
-  padding: 30px;
+  /* dialog 容器不滚动：滚动只在 help-tabpanel，滚动条贴 dialog 右缘 */
+  padding: 0;
+  overflow: hidden;
   /* dialog 尺寸固定；内容超出时在面板内滚动。 */
   display: flex;
   flex-direction: column;
 }
+.help-dialog .help-heading {
+  padding: 6px 30px 0;
+}
+.help-dialog .help-tabs {
+  margin: 0 30px 10px;
+}
+/* 历史记录弹窗：固定尺寸，左侧时间列表、右侧内容预览。滚动条贴 dialog 右缘。 */
+.history-dialog {
+  width: 720px;
+  height: 520px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* padding 已由 dialog 统一为 0：头部自带内边距，预览区滚动条贴 dialog 右缘 */
+.history-head {
+  position: relative;
+  padding: 22px 24px 0;
+}
+/* 右上角关闭叉叉 */
+.history-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+}
+.history-head h2 {
+  margin: 0;
+  font-size: 17px;
+}
+.history-head p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+.history-body {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+  margin: 14px 0;
+}
+.history-list {
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  padding: 0 8px 12px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.history-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+  border-radius: 8px;
+}
+.history-item.is-selected {
+  background: var(--card);
+}
+.history-item-time {
+  flex: 1;
+  text-align: left;
+  border: 0;
+  background: none;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.history-item-time:hover {
+  background: var(--hover);
+}
+.history-preview {
+  overflow-y: auto;
+  min-width: 0;
+  padding: 0 0 12px;
+}
+.history-preview pre {
+  margin: 0;
+  padding: 4px 24px 4px 2px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--ink);
+}
+.history-empty {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 18px 10px;
+  margin: 0;
+}
 .settings-dialog {
   width: 580px;
   max-height: 565px;
-  padding: 24px 28px 20px;
+  /* dialog 容器不滚动：滚动只在 settings-body，滚动条贴 dialog 右缘 */
+  padding: 0;
+  overflow: hidden;
   display: flex;
   flex-direction: column;
 }
-/* 标题与底部固定，内容超出 565px 时在中间滚动 */
+/* 标题与底部固定，内容超出 565px 时在中间滚动；
+   body 的横向 padding 让内容与贴边滚动条之间留出间距。 */
 .settings-body {
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
-  scrollbar-color: var(--strong-border) transparent;
+  padding: 4px 28px 16px;
+}
+.settings-dialog .settings-heading {
+  padding: 24px 28px 16px;
+}
+.settings-dialog .settings-footer {
+  padding: 16px 28px 20px;
+  margin-top: 0;
 }
 .settings-heading {
   display: flex;
@@ -1247,12 +1397,7 @@ kbd {
   border: 0;
   border-top: 1px solid var(--border);
 }
-fieldset.settings-section {
-  padding: 0;
-  border: 0;
-}
-.settings-section h3,
-.settings-section legend {
+.settings-section h3 {
   padding: 0;
   margin: 0 0 10px;
   font-size: 13px;
@@ -1267,6 +1412,32 @@ fieldset.settings-section {
 }
 .settings-row h3 {
   margin: 0;
+}
+/* 编辑历史：KB 输入 + Info 提示 */
+.history-limit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 13px;
+}
+.history-limit-label {
+  color: var(--muted);
+}
+.history-limit-input {
+  width: 64px;
+  padding: 5px 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--paper);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: right;
+}
+.history-limit-input:focus-visible {
+  outline: none;
+  border-color: var(--green);
 }
 .secondary-button {
   display: inline-flex;
@@ -1358,14 +1529,14 @@ fieldset.settings-section {
 }
 .about-brand span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .about-details {
   display: flex;
   flex-direction: column;
   gap: 6px;
   margin: 0;
-  font-size: 11px;
+  font-size: 12px;
 }
 .about-details > div {
   display: flex;
@@ -1400,7 +1571,7 @@ fieldset.settings-section {
 }
 .settings-footer > span {
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.6;
 }
 .settings-footer > .save-error {
@@ -1410,9 +1581,6 @@ fieldset.settings-section {
   flex-shrink: 0;
   padding: 8px 21px;
   font-size: 12px;
-}
-.format-lead {
-  margin: 0 0 10px;
 }
 .format-group-label {
   margin: 0 0 6px;
@@ -1521,7 +1689,9 @@ fieldset.settings-section {
 .help-tabpanel {
   min-height: 0;
   overflow-y: auto;
-  scrollbar-width: thin;
+  /* 横向 padding 让内容与贴边滚动条之间留出间距 */
+  padding: 0 30px 0;
+  margin-bottom: 20px;
 }
 .help-tabpanel:focus-visible {
   outline: none;
@@ -1640,7 +1810,7 @@ fieldset.settings-section {
   gap: 15px;
   margin-top: 24px;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 12px;
 }
 .help-shortcuts kbd {
   border: 1px solid var(--border);

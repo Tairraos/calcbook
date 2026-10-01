@@ -65,6 +65,7 @@ fn save_workspace_settings(
     theme: String,
     #[allow(non_snake_case)] activeId: Option<String>,
     format: storage::FormatSettings,
+    #[allow(non_snake_case)] historyLimitKb: u32,
 ) -> Result<(), String> {
     let _guard = lock.0.lock().map_err(|_| "笔记存储忙，请重启应用")?;
     storage::save_settings(
@@ -72,6 +73,7 @@ fn save_workspace_settings(
         &theme,
         activeId.as_deref(),
         &format,
+        historyLimitKb,
     )
 }
 
@@ -119,14 +121,65 @@ fn delete_note(
 }
 
 #[tauri::command]
-fn ensure_note(
+fn record_history(
+    app: tauri::AppHandle,
+    lock: tauri::State<StoreLock>,
+    #[allow(non_snake_case)] noteId: String,
+    content: String,
+    bucket: String,
+    #[allow(non_snake_case)] limitBytes: u64,
+) -> Result<(), String> {
+    let _guard = lock.0.lock().map_err(|_| "笔记存储忙，请重启应用")?;
+    storage::record_history(
+        &store(&app)?.directory()?,
+        &noteId,
+        &content,
+        &bucket,
+        limitBytes,
+    )
+}
+
+#[tauri::command]
+fn list_history(
+    app: tauri::AppHandle,
+    lock: tauri::State<StoreLock>,
+    #[allow(non_snake_case)] noteId: String,
+    #[allow(non_snake_case)] currentHour: String,
+) -> Result<Vec<storage::HistoryEntry>, String> {
+    let _guard = lock.0.lock().map_err(|_| "笔记存储忙，请重启应用")?;
+    storage::list_history(&store(&app)?.directory()?, &noteId, &currentHour)
+}
+
+#[tauri::command]
+fn delete_history(
+    app: tauri::AppHandle,
+    lock: tauri::State<StoreLock>,
+    #[allow(non_snake_case)] noteId: String,
+    bucket: String,
+) -> Result<(), String> {
+    let _guard = lock.0.lock().map_err(|_| "笔记存储忙，请重启应用")?;
+    storage::delete_history(&store(&app)?.directory()?, &noteId, &bucket)
+}
+
+#[tauri::command]
+fn rename_note(
     app: tauri::AppHandle,
     lock: tauri::State<StoreLock>,
     #[allow(non_snake_case)] noteId: String,
     title: String,
+) -> Result<storage::RenameResult, String> {
+    let _guard = lock.0.lock().map_err(|_| "笔记存储忙，请重启应用")?;
+    storage::rename_note(&store(&app)?.directory()?, &noteId, &title)
+}
+
+#[tauri::command]
+fn ensure_note(
+    app: tauri::AppHandle,
+    lock: tauri::State<StoreLock>,
+    #[allow(non_snake_case)] noteId: String,
 ) -> Result<bool, String> {
     let _guard = lock.0.lock().map_err(|_| "笔记存储忙，请重启应用")?;
-    storage::ensure_note(&store(&app)?.directory()?, &noteId, &title)
+    storage::ensure_note(&store(&app)?.directory()?, &noteId)
 }
 
 #[derive(serde::Serialize)]
@@ -236,49 +289,6 @@ fn open_project(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|error| format!("无法打开项目链接：{error}"))
 }
 
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-struct ImportedNote {
-    title: String,
-    content: String,
-}
-
-/// 打开一个 Numi 兼容的 .txt 笔记并返回原始文本；`= 结果` 由前端剥离后重新计算。
-#[tauri::command]
-async fn import_note(app: tauri::AppHandle) -> Result<Option<ImportedNote>, String> {
-    tauri::async_runtime::spawn_blocking(move || {
-        let Some(choice) = app
-            .dialog()
-            .file()
-            .add_filter("文本笔记", &["txt"])
-            .set_title("导入 Numi 文本笔记")
-            .blocking_pick_file()
-        else {
-            return Ok(None);
-        };
-        let path = choice.into_path().map_err(|error| error.to_string())?;
-        let metadata =
-            std::fs::metadata(&path).map_err(|error| format!("无法读取所选文件：{error}"))?;
-        if metadata.len() > 24_000_000 {
-            return Err("所选文件超过 24 MB".into());
-        }
-        let bytes = std::fs::read(&path).map_err(|error| format!("无法读取所选文件：{error}"))?;
-        let content =
-            String::from_utf8(bytes).map_err(|_| "所选文件不是 UTF-8 文本".to_string())?;
-        if content.encode_utf16().count() > 100_000 {
-            return Err("笔记超过 100,000 字上限".into());
-        }
-        let title = path
-            .file_stem()
-            .map(|stem| stem.to_string_lossy().trim().to_string())
-            .filter(|stem| !stem.is_empty())
-            .unwrap_or_else(|| "导入的笔记".into());
-        Ok(Some(ImportedNote { title, content }))
-    })
-    .await
-    .map_err(|error| error.to_string())?
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -307,14 +317,17 @@ pub fn run() {
             scan_workspace,
             save_workspace_settings,
             export_note,
-            import_note,
             toggle_calculator,
             hide_calculator,
             calculator_state,
             create_note,
             write_note,
+            rename_note,
             move_note,
             delete_note,
+            record_history,
+            list_history,
+            delete_history,
             ensure_note,
             reveal_note,
             storage_info,

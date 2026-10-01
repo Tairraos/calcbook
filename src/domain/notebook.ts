@@ -16,21 +16,40 @@ const LEGACY_THEMES: Record<string, Theme> = {
 };
 export type Note = {
   id: string;
+  // 桌面版标题即文件名主干（无扩展名），由存储层维护；浏览器预览是独立字段。
   title: string;
-  // 桌面版里正文单独存成 <filename>.txt；空字符串表示由标题推导，由存储层决定。
+  // 桌面版里正文单独存成 <filename>.txt；空字符串表示由存储层决定。
   filename: string;
   body: string;
   createdAt: string;
   updatedAt: string;
   trashed: boolean;
 };
+
+// 单条编辑历史：name 是本地时间的小时桶（`年-月-日-时`），content 是当时的文件正文。
+export type HistoryEntry = { name: string; content: string };
 export type Workspace = {
   version: 1;
   notes: Note[];
   activeId: string | null;
   theme: Theme;
   format: FormatSettings;
+  // 每个笔记的历史版本空间上限（KB），0 = 关闭历史；见 parseWorkspace 的取值范围。
+  historyLimitKB: number;
 };
+
+// 历史空间默认与取值范围：0 关闭，上限 64 MB。
+export const DEFAULT_HISTORY_LIMIT_KB = 128;
+export const MAX_HISTORY_LIMIT_KB = 65536;
+
+export function isHistoryLimitKB(value: unknown): value is number {
+  return (
+    typeof value === "number" &&
+    Number.isInteger(value) &&
+    value >= 0 &&
+    value <= MAX_HISTORY_LIMIT_KB
+  );
+}
 
 export function createNote(id: string, now: string, title = "未命名笔记", body = ""): Note {
   return { id, title, filename: "", body, createdAt: now, updatedAt: now, trashed: false };
@@ -51,17 +70,6 @@ export const EXAMPLES = [
   },
 ];
 
-// 标题改动同步到正文首行标题：文件即事实来源，标题保存在首行 `# 标题`。
-export function withHeading(body: string, title: string): string {
-  const heading = `# ${title.trim()}`;
-  const lines = body.replace(/\r\n?/g, "\n").split("\n");
-  if (lines[0]?.trim().startsWith("#")) {
-    lines[0] = heading;
-    return lines.join("\n");
-  }
-  return body.trim() ? `${heading}\n${body}` : `${heading}\n`;
-}
-
 export function createWorkspace(now: string, makeId: () => string): Workspace {
   const notes = EXAMPLES.map((example) => createNote(makeId(), now, example.title, example.body));
   return {
@@ -70,6 +78,7 @@ export function createWorkspace(now: string, makeId: () => string): Workspace {
     activeId: notes[0].id,
     theme: "light",
     format: DEFAULT_FORMAT_SETTINGS,
+    historyLimitKB: DEFAULT_HISTORY_LIMIT_KB,
   };
 }
 
@@ -132,5 +141,16 @@ export function parseWorkspace(input: unknown): Workspace {
   if (input.activeId !== null && (typeof input.activeId !== "string" || !ids.has(input.activeId))) {
     throw new Error("当前笔记引用无效，原数据已保留。");
   }
-  return { version: 1, notes, activeId: input.activeId, theme: theme as Theme, format };
+  // 历史空间：缺省或取值非法时回落默认（128KB），不让手工改动阻塞启动
+  const historyLimitKB = isHistoryLimitKB(input.historyLimitKB)
+    ? input.historyLimitKB
+    : DEFAULT_HISTORY_LIMIT_KB;
+  return {
+    version: 1,
+    notes,
+    activeId: input.activeId,
+    theme: theme as Theme,
+    format,
+    historyLimitKB,
+  };
 }

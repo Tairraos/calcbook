@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { DEFAULT_FORMAT_SETTINGS } from "../src/domain/formatting.ts";
-import { createWorkspace, MAX_NOTE_LENGTH, parseWorkspace } from "../src/domain/notebook.ts";
+import {
+  createWorkspace,
+  DEFAULT_HISTORY_LIMIT_KB,
+  MAX_NOTE_LENGTH,
+  parseWorkspace,
+} from "../src/domain/notebook.ts";
 
 test("workspace round trip preserves notes, theme and trash", () => {
   const workspace = createWorkspace(new Date().toISOString(), () => crypto.randomUUID());
@@ -9,6 +14,25 @@ test("workspace round trip preserves notes, theme and trash", () => {
   workspace.notes[0].trashed = true;
   assert.deepEqual(parseWorkspace(JSON.parse(JSON.stringify(workspace))), workspace);
 });
+test("history limit falls back to default when missing or out of range", () => {
+  const workspace = createWorkspace(new Date().toISOString(), () => crypto.randomUUID());
+  // 缺省回落默认
+  const { historyLimitKB: _omitted, ...without } = workspace;
+  assert.equal(parseWorkspace(without).historyLimitKB, DEFAULT_HISTORY_LIMIT_KB);
+  // 正常往返
+  workspace.historyLimitKB = 0;
+  assert.equal(parseWorkspace({ ...workspace }).historyLimitKB, 0);
+  workspace.historyLimitKB = 65536;
+  assert.equal(parseWorkspace({ ...workspace }).historyLimitKB, 65536);
+  // 非法值回落默认
+  for (const invalid of [-1, 1.5, 65537, "128", null]) {
+    assert.equal(
+      parseWorkspace({ ...workspace, historyLimitKB: invalid }).historyLimitKB,
+      DEFAULT_HISTORY_LIMIT_KB,
+    );
+  }
+});
+
 test("removed calculatorMode field is ignored on read", () => {
   const workspace = createWorkspace(new Date().toISOString(), () => crypto.randomUUID());
   const migrated = parseWorkspace({ ...workspace, calculatorMode: "dialog" });

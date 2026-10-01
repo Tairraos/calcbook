@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     fs,
     io::Write,
     path::{Path, PathBuf},
@@ -10,6 +10,10 @@ const MAX_FILE_BYTES: u64 = 24_000_000;
 const MAX_FILENAME_BYTES: usize = 160;
 const WORKSPACE_FILE: &str = "workspace.json";
 const RECYCLED_DIR: &str = "recycled";
+const HISTORY_DIR: &str = "history";
+/// 每个笔记的历史版本空间（KB）：设置里可配，0 = 关闭历史。
+pub const DEFAULT_HISTORY_LIMIT_KB: u32 = 128;
+pub const MAX_HISTORY_LIMIT_KB: u32 = 65536;
 pub const MAX_NOTES: usize = 100;
 
 /// 扫描结果：正文完全以 .txt 文件为事实来源（数据目录 = 笔记，recycled/ = 废纸篓），
@@ -23,6 +27,12 @@ pub struct Payload {
     theme: String,
     #[serde(default)]
     format: FormatSettings,
+    #[serde(default = "default_history_limit_kb", rename = "historyLimitKB")]
+    history_limit_kb: u32,
+}
+
+fn default_history_limit_kb() -> u32 {
+    DEFAULT_HISTORY_LIMIT_KB
 }
 
 /// 单篇笔记：id 即文件相对路径（`预算.txt` 或 `recycled/预算.txt`）。
@@ -40,7 +50,7 @@ pub struct PayloadNote {
     trashed: bool,
 }
 
-/// 落盘的工作区设置（主题、当前笔记、格式），不含笔记清单。
+/// 落盘的工作区设置（主题、当前笔记、格式、历史空间），不含笔记清单。
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct WorkspaceSettings {
@@ -49,6 +59,8 @@ struct WorkspaceSettings {
     theme: String,
     #[serde(default)]
     format: FormatSettings,
+    #[serde(default = "default_history_limit_kb", rename = "historyLimitKB")]
+    history_limit_kb: u32,
 }
 
 // 兼容读取改造前的格式：正文内联在 workspace.json、笔记清单驱动。
@@ -220,6 +232,23 @@ pub fn resolve_note_path(directory: &Path, note_id: &str) -> Result<(PathBuf, bo
     Ok((path, trashed))
 }
 
+/// 递归复制目录（历史目录随 relocate 搬家用）。
+fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), String> {
+    fs::create_dir_all(target).map_err(|error| format!("无法复制笔记历史：{error}"))?;
+    for entry in fs::read_dir(source).map_err(|error| format!("无法复制笔记历史：{error}"))?
+    {
+        let entry = entry.map_err(|error| format!("无法复制笔记历史：{error}"))?;
+        let from = entry.path();
+        let to = target.join(entry.file_name());
+        if from.is_dir() {
+            copy_dir_recursive(&from, &to)?;
+        } else {
+            fs::copy(&from, &to).map_err(|error| format!("无法复制笔记历史：{error}"))?;
+        }
+    }
+    Ok(())
+}
+
 fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let mut temporary = path.as_os_str().to_os_string();
     temporary.push(".tmp");
@@ -262,24 +291,6 @@ fn file_timestamps(path: &Path) -> (String, String) {
     let modified = secs(metadata.as_ref().and_then(|meta| meta.modified().ok()));
     let created = secs(metadata.as_ref().and_then(|meta| meta.created().ok()));
     (iso_timestamp(created), iso_timestamp(modified))
-}
-
-/// 从正文取标题：首个非空行若是 `# 标题` 则用之，否则用文件名主干。
-fn derive_title(body: &str, stem: &str) -> String {
-    for line in body.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-        if let Some(rest) = trimmed.strip_prefix('#') {
-            let title = rest.trim();
-            if !title.is_empty() {
-                return truncate_bytes(title, 120);
-            }
-        }
-        break;
-    }
-    truncate_bytes(stem, 120)
 }
 
 fn read_text_file(path: &Path) -> Result<String, String> {
@@ -351,7 +362,8 @@ fn scan_layer(
         notes.push(PayloadNote {
             id,
             filename: String::new(),
-            title: derive_title(&body, &stem),
+            // 标题即文件名主干（无扩展名）；正文里的 `#` 只是内容标记
+            title: stem,
             body,
             created_at,
             updated_at,
@@ -362,7 +374,7 @@ fn scan_layer(
 }
 
 /// 启动扫描：数据目录与 recycled/ 下的全部 .txt 都是笔记。
-/// 外部新增/删除的文件在扫描时自动同步。
+/// 外部新增/删除的文件在扫描时自动同步；孤儿历史目录一并清理。
 pub fn scan(directory: &Path) -> Result<Payload, String> {
     fs::create_dir_all(directory).map_err(|error| format!("无法创建笔记目录：{error}"))?;
     fs::create_dir_all(directory.join(RECYCLED_DIR))
@@ -377,6 +389,12 @@ pub fn scan(directory: &Path) -> Result<Payload, String> {
             MAX_NOTES
         ));
     }
+    // 历史空间设为 0（关闭）：启动时清空全部历史；否则只清理孤儿目录
+    if settings.history_limit_kb == 0 {
+        let _ = fs::remove_dir_all(directory.join(HISTORY_DIR));
+    } else {
+        prune_history(directory, &notes);
+    }
     let active_id = settings
         .active_id
         .filter(|id| notes.iter().any(|note| note.id == *id));
@@ -386,6 +404,7 @@ pub fn scan(directory: &Path) -> Result<Payload, String> {
         active_id,
         theme: settings.theme,
         format: settings.format,
+        history_limit_kb: settings.history_limit_kb,
     })
 }
 
@@ -399,6 +418,7 @@ fn read_workspace_settings(directory: &Path) -> Result<WorkspaceSettings, String
                 active_id: None,
                 theme: "light".into(),
                 format: FormatSettings::default(),
+                history_limit_kb: default_history_limit_kb(),
             });
         }
         Err(error) => return Err(format!("无法读取笔记：{error}")),
@@ -409,17 +429,20 @@ fn read_workspace_settings(directory: &Path) -> Result<WorkspaceSettings, String
     if probe.get("notes").is_some() {
         migrate_legacy(directory)?;
         let fresh = fs::read(&path).map_err(|error| format!("无法读取笔记：{error}"))?;
-        let settings: WorkspaceSettings = serde_json::from_slice(&fresh)
+        let mut settings: WorkspaceSettings = serde_json::from_slice(&fresh)
             .map_err(|error| format!("笔记文件损坏，原文件已保留：{error}"))?;
         settings.format.validate()?;
+        settings.history_limit_kb = settings.history_limit_kb.min(MAX_HISTORY_LIMIT_KB);
         return Ok(settings);
     }
-    let settings: WorkspaceSettings = serde_json::from_slice(&bytes)
+    let mut settings: WorkspaceSettings = serde_json::from_slice(&bytes)
         .map_err(|error| format!("笔记文件损坏，原文件已保留：{error}"))?;
     if !valid_theme(&settings.theme) {
         return Err("主题配置无效".into());
     }
     settings.format.validate()?;
+    // 手工改动的历史空间超限时钳制，不阻塞启动
+    settings.history_limit_kb = settings.history_limit_kb.min(MAX_HISTORY_LIMIT_KB);
     Ok(settings)
 }
 
@@ -475,6 +498,7 @@ fn migrate_legacy(directory: &Path) -> Result<(), String> {
         active_id: stored.active_id.clone(),
         theme: stored.theme.clone(),
         format,
+        history_limit_kb: default_history_limit_kb(),
     };
     let out = serde_json::to_vec_pretty(&settings).map_err(|error| error.to_string())?;
     write_atomic(&path, &out).map_err(|error| format!("替换笔记文件失败：{error}"))
@@ -485,11 +509,15 @@ pub fn save_settings(
     theme: &str,
     active_id: Option<&str>,
     format: &FormatSettings,
+    history_limit_kb: u32,
 ) -> Result<(), String> {
     if !valid_theme(theme) {
         return Err("主题配置无效".into());
     }
     format.validate()?;
+    if history_limit_kb > MAX_HISTORY_LIMIT_KB {
+        return Err("历史空间配置无效".into());
+    }
     // 当前笔记必须真实存在（数据目录或 recycled/），否则丢弃引用
     let mut used: HashSet<String> = HashSet::new();
     for place in [directory.to_path_buf(), directory.join(RECYCLED_DIR)] {
@@ -511,6 +539,7 @@ pub fn save_settings(
         active_id: active_id.map(|id| id.to_string()),
         theme: theme.to_string(),
         format: format.clone(),
+        history_limit_kb,
     };
     let bytes = serde_json::to_vec_pretty(&settings).map_err(|error| error.to_string())?;
     fs::create_dir_all(directory).map_err(|error| format!("无法创建笔记目录：{error}"))?;
@@ -532,14 +561,17 @@ fn locate_note(directory: &Path, note_id: &str) -> Result<(PathBuf, bool), Strin
 }
 
 fn resolve_pair(directory: &Path, note_id: &str) -> Result<(PathBuf, PathBuf), String> {
-    let (normal, _) = resolve_note_path(directory, note_id)?;
-    let recycled_path = directory.join(RECYCLED_DIR).join(
-        normal
-            .file_name()
-            .map(|stem| stem.to_os_string())
-            .ok_or("笔记文件名无效")?,
-    );
-    Ok((normal, recycled_path))
+    // id 可能带 recycled/ 前缀（扫描废纸篓后的形态）：两个位置都按同一文件名解析，
+    // 改名、恢复与写入在任一形态下都落在真实文件上。
+    let name = note_id
+        .strip_prefix("recycled/")
+        .unwrap_or(note_id)
+        .to_string();
+    validate_filename(&name)?;
+    Ok((
+        directory.join(&name),
+        directory.join(RECYCLED_DIR).join(name),
+    ))
 }
 
 /// 写单篇笔记（新建与覆盖同一路径；文件不存在即创建）。
@@ -571,6 +603,7 @@ pub fn move_note(directory: &Path, note_id: &str, to_recycled: bool) -> Result<(
 }
 
 /// 永久删除单篇笔记文件：数据目录与 recycled/ 两个位置都清理；不存在时视为成功。
+/// 历史目录一并删除，保持「永久删除不可恢复」的承诺。
 pub fn delete_note(directory: &Path, note_id: &str) -> Result<(), String> {
     let (normal, recycled_path) = resolve_pair(directory, note_id)?;
     for path in [normal, recycled_path] {
@@ -580,19 +613,327 @@ pub fn delete_note(directory: &Path, note_id: &str) -> Result<(), String> {
             Err(error) => return Err(format!("无法删除笔记：{error}")),
         }
     }
+    let history = history_dir(directory, note_id)?;
+    if history.exists() {
+        fs::remove_dir_all(&history).map_err(|error| format!("无法删除笔记历史：{error}"))?;
+    }
     Ok(())
 }
 
-/// 运行期间文件被外部删除时：点击笔记即按已知信息（文件名与首行标题）重建同名文件。
-pub fn ensure_note(directory: &Path, note_id: &str, title: &str) -> Result<bool, String> {
+/// 历史条目：name 是时间桶（`年-月-日-时-分-秒`，旧数据为整点 `年-月-日-时`），content 是当时的文件正文。
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct HistoryEntry {
+    pub name: String,
+    pub content: String,
+}
+
+/// 笔记的历史目录：`history/<文件名主干>/`，废纸篓前缀不影响归属。
+fn history_dir(directory: &Path, note_id: &str) -> Result<PathBuf, String> {
+    let name = note_id
+        .strip_prefix("recycled/")
+        .unwrap_or(note_id)
+        .to_string();
+    validate_filename(&name)?;
+    let stem = name.strip_suffix(".txt").unwrap_or(&name);
+    Ok(directory.join(HISTORY_DIR).join(stem))
+}
+
+/// 时间桶格式：`年-月-日-时-分-秒`（19 字符，本地时间，由前端生成避免 Rust 引日期库）。
+fn validate_bucket(bucket: &str) -> bool {
+    let bytes = bucket.as_bytes();
+    if bytes.len() != 19 {
+        return false;
+    }
+    for (index, byte) in bytes.iter().enumerate() {
+        let separator = matches!(index, 4 | 7 | 10 | 13 | 16);
+        if separator != (*byte == b'-') {
+            return false;
+        }
+        if !separator && !byte.is_ascii_digit() {
+            return false;
+        }
+    }
+    true
+}
+
+/// 时间桶的小时前缀（前 13 字符）。兼容旧版 13 字符的整点文件名。
+fn hour_prefix(name: &str) -> Option<&str> {
+    match name.len() {
+        13 | 19 => {
+            let prefix = &name[..13];
+            validate_bucket(&format!("{prefix}-00-00")).then_some(prefix)
+        }
+        _ => None,
+    }
+}
+
+/// 记录一份历史：时间戳即文件名（`年-月-日-时-分-秒.txt`），当前小时内可以有多份；
+/// 写完先把超出当前小时的每小时多份整理为一份整点快照，再按单篇历史上限（字节）从最早淘汰
+/// （最新一份永不淘汰）。limit_bytes 为 0 表示历史已关闭：清空该笔记的既有历史，不写入。
+/// 时间戳由前端按本地时间生成，这里只做格式校验。
+pub fn record_history(
+    directory: &Path,
+    note_id: &str,
+    content: &str,
+    bucket: &str,
+    limit_bytes: u64,
+) -> Result<(), String> {
+    if !validate_bucket(bucket) {
+        return Err("历史时间戳无效".into());
+    }
+    let dir = history_dir(directory, note_id)?;
+    if limit_bytes == 0 {
+        // 历史已关闭：编辑到哪篇就清哪篇的既有历史
+        if dir.exists() {
+            fs::remove_dir_all(&dir).map_err(|error| format!("无法清理笔记历史：{error}"))?;
+        }
+        return Ok(());
+    }
+    fs::create_dir_all(&dir).map_err(|error| format!("无法创建笔记历史：{error}"))?;
+    write_atomic(&dir.join(format!("{bucket}.txt")), content.as_bytes())
+        .map_err(|error| format!("无法写入笔记历史：{error}"))?;
+    compact_history(&dir, &bucket[..13])?;
+    enforce_history_cap(&dir, limit_bytes)
+}
+
+/// 整理历史：当前小时之外，每小时多于一份时只保留最后一份，并改名为整点
+/// （`年-月-日-时-00-00`）。兼容旧版 13 字符整点文件名；不合时间格式的文件不动。
+fn compact_history(dir: &Path, current_hour: &str) -> Result<(), String> {
+    let mut by_hour: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    for entry in fs::read_dir(dir).map_err(|error| format!("无法读取笔记历史：{error}"))? {
+        let entry = entry.map_err(|error| format!("无法读取笔记历史：{error}"))?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.ends_with(".txt") || name.ends_with(".tmp") {
+            continue;
+        }
+        let stem = name.strip_suffix(".txt").unwrap_or(&name);
+        if let Some(hour) = hour_prefix(stem) {
+            by_hour.entry(hour.to_string()).or_default().push(name);
+        }
+    }
+    for (hour, mut names) in by_hour {
+        if hour == current_hour || names.len() <= 1 {
+            continue;
+        }
+        names.sort();
+        let keep = names.pop().expect("该小时至少有两份历史");
+        for name in &names {
+            fs::remove_file(dir.join(name))
+                .map_err(|error| format!("无法整理笔记历史：{error}"))?;
+        }
+        let target = format!("{hour}-00-00");
+        if keep != target {
+            fs::rename(dir.join(keep), dir.join(format!("{target}.txt")))
+                .map_err(|error| format!("无法整理笔记历史：{error}"))?;
+        }
+    }
+    Ok(())
+}
+
+/// 单篇历史总量超限时，按时间桶从最早开始删除，直到回到上限内；最新一份始终保留。
+fn enforce_history_cap(dir: &Path, limit_bytes: u64) -> Result<(), String> {
+    let mut entries: Vec<(String, u64)> = Vec::new();
+    let mut total: u64 = 0;
+    for entry in fs::read_dir(dir).map_err(|error| format!("无法读取笔记历史：{error}"))? {
+        let entry = entry.map_err(|error| format!("无法读取笔记历史：{error}"))?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.ends_with(".txt") || name.ends_with(".tmp") {
+            continue;
+        }
+        let size = entry.metadata().map(|meta| meta.len()).unwrap_or(0);
+        total += size;
+        entries.push((name, size));
+    }
+    if total <= limit_bytes {
+        return Ok(());
+    }
+    // 时间桶名字典序即时间序；逐个删除最早的。最新一份不参与淘汰：
+    // 单篇快照本身可能超过上限（超大笔记），删到只剩它为止，历史不至于全空。
+    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    entries.pop();
+    for (name, size) in entries {
+        if total <= limit_bytes {
+            break;
+        }
+        fs::remove_file(dir.join(&name)).map_err(|error| format!("无法清理笔记历史：{error}"))?;
+        total -= size;
+    }
+    Ok(())
+}
+
+/// 删除单条历史（弹窗里的删除图标）。bucket 是秒级时间戳或旧版整点名；
+/// 文件不存在时视为成功。历史目录删空后一并移除。
+pub fn delete_history(directory: &Path, note_id: &str, bucket: &str) -> Result<(), String> {
+    let valid = validate_bucket(bucket) || hour_prefix(bucket).is_some();
+    if !valid {
+        return Err("历史时间戳无效".into());
+    }
+    let dir = history_dir(directory, note_id)?;
+    match fs::remove_file(dir.join(format!("{bucket}.txt"))) {
+        Ok(()) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("无法删除笔记历史：{error}")),
+    }
+    // 目录已空时清掉，避免留下空目录
+    if dir.exists()
+        && fs::read_dir(&dir)
+            .map(|mut entries| entries.next().is_none())
+            .unwrap_or(false)
+    {
+        let _ = fs::remove_dir(&dir);
+    }
+    Ok(())
+}
+
+/// 列出单篇笔记的全部历史，最新在前；列出前先整理旧小时（与磁盘保持一致）。
+/// currentHour 是前端本地时间的小时前缀，格式不对时跳过整理只列清单。
+pub fn list_history(
+    directory: &Path,
+    note_id: &str,
+    current_hour: &str,
+) -> Result<Vec<HistoryEntry>, String> {
+    let dir = history_dir(directory, note_id)?;
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+    if validate_bucket(&format!("{current_hour}-00-00")) {
+        compact_history(&dir, current_hour)?;
+    }
+    let mut entries: Vec<HistoryEntry> = Vec::new();
+    for entry in fs::read_dir(&dir).map_err(|error| format!("无法读取笔记历史：{error}"))?
+    {
+        let entry = entry.map_err(|error| format!("无法读取笔记历史：{error}"))?;
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !name.ends_with(".txt") || name.ends_with(".tmp") {
+            continue;
+        }
+        let Ok(content) = fs::read_to_string(entry.path()) else {
+            continue;
+        };
+        entries.push(HistoryEntry {
+            name: name.strip_suffix(".txt").unwrap_or(&name).to_string(),
+            content,
+        });
+    }
+    entries.sort_by(|a, b| b.name.cmp(&a.name));
+    Ok(entries)
+}
+
+/// 改名时历史目录跟随文件名移动（没有历史时是空操作）。
+fn move_history(directory: &Path, old_note_id: &str, new_note_id: &str) -> Result<(), String> {
+    let old_dir = history_dir(directory, old_note_id)?;
+    let new_dir = history_dir(directory, new_note_id)?;
+    if old_dir == new_dir || !old_dir.exists() {
+        return Ok(());
+    }
+    if let Some(parent) = new_dir.parent() {
+        fs::create_dir_all(parent).map_err(|error| format!("无法创建笔记历史：{error}"))?;
+    }
+    fs::rename(&old_dir, &new_dir).map_err(|error| format!("无法移动笔记历史：{error}"))
+}
+
+/// 启动清理：history/ 下不再对应任何笔记（含废纸篓）的目录删除。
+/// 应对外部改名/删除与手工操作留下的孤儿目录；尽力而为，失败不阻塞启动。
+fn prune_history(directory: &Path, notes: &[PayloadNote]) {
+    let history = directory.join(HISTORY_DIR);
+    let Ok(entries) = fs::read_dir(&history) else {
+        return;
+    };
+    let stems: HashSet<String> = notes
+        .iter()
+        .map(|note| {
+            let name = note.id.strip_prefix("recycled/").unwrap_or(&note.id);
+            name.strip_suffix(".txt").unwrap_or(name).to_string()
+        })
+        .collect();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if !path.is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        if !stems.contains(&name) {
+            let _ = fs::remove_dir_all(&path);
+        }
+    }
+}
+
+/// 运行期间文件被外部删除时：点击笔记即重建同名空文件（内存中的正文会在下次保存写回）。
+pub fn ensure_note(directory: &Path, note_id: &str) -> Result<bool, String> {
     let (normal, recycled_path) = resolve_pair(directory, note_id)?;
     if normal.exists() || recycled_path.exists() {
         return Ok(false);
     }
     fs::create_dir_all(directory).map_err(|error| format!("无法创建笔记目录：{error}"))?;
-    write_atomic(&normal, format!("# {title}\n").as_bytes())
-        .map_err(|error| format!("无法重建笔记：{error}"))?;
+    write_atomic(&normal, b"").map_err(|error| format!("无法重建笔记：{error}"))?;
     Ok(true)
+}
+
+/// 改名结果：id 是含 recycled/ 前缀的文件相对路径，title 是去掉 .txt 的主干。
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct RenameResult {
+    pub id: String,
+    pub title: String,
+}
+
+/// 改名：标题即文件名主干。撞名自动加序号，废纸篓里的笔记留在原层级。
+pub fn rename_note(directory: &Path, note_id: &str, title: &str) -> Result<RenameResult, String> {
+    let (path, trashed) = locate_note(directory, note_id)?;
+    if !path.exists() {
+        return Err("笔记文件不存在".into());
+    }
+    let current_name = path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .ok_or("笔记文件名无效")?;
+    // 用户可能顺手带上扩展名：统一剥掉再生成（走 Path 解析，不会切进多字节字符）
+    let requested = title.trim();
+    let requested = match Path::new(requested).extension() {
+        Some(ext) if ext.eq_ignore_ascii_case("txt") => Path::new(requested)
+            .file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or(requested),
+        _ => requested,
+    };
+    let desired = slugify(requested, "未命名");
+    if desired == current_name {
+        let stem = desired.strip_suffix(".txt").unwrap_or(&desired).to_string();
+        return Ok(RenameResult {
+            id: note_id.to_string(),
+            title: stem,
+        });
+    }
+    let mut used: HashSet<String> = HashSet::new();
+    for place in [directory.to_path_buf(), directory.join(RECYCLED_DIR)] {
+        if let Ok(entries) = fs::read_dir(&place) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if name.ends_with(".txt") {
+                    used.insert(name);
+                }
+            }
+        }
+    }
+    used.remove(&current_name);
+    let filename = unique_name(desired, &used);
+    let target = match path.parent() {
+        Some(parent) => parent.join(&filename),
+        None => return Err("笔记文件名无效".into()),
+    };
+    fs::rename(&path, &target).map_err(|error| format!("无法重命名笔记：{error}"))?;
+    let stem = filename
+        .strip_suffix(".txt")
+        .unwrap_or(&filename)
+        .to_string();
+    let id = if trashed {
+        format!("{RECYCLED_DIR}/{filename}")
+    } else {
+        filename
+    };
+    move_history(directory, note_id, &id)?;
+    Ok(RenameResult { id, title: stem })
 }
 
 /// 新建笔记：标题生成唯一文件名，正文落盘，返回笔记。
@@ -613,23 +954,18 @@ pub fn create_note(directory: &Path, title: &str, body: &str) -> Result<PayloadN
         return Err(format!("笔记数量已达 {} 篇上限", MAX_NOTES));
     }
     let filename = unique_name(slugify(title, "未命名"), &used);
-    let body = if body.is_empty() {
-        format!("# {title}\n")
-    } else {
-        body.to_string()
-    };
     write_atomic(&directory.join(&filename), body.as_bytes())
         .map_err(|error| format!("保存笔记失败：{error}"))?;
     let (created_at, updated_at) = file_timestamps(&directory.join(&filename));
-    let stem = filename
-        .strip_suffix(".txt")
-        .unwrap_or(&filename)
-        .to_string();
     Ok(PayloadNote {
         id: filename.clone(),
         filename: String::new(),
-        title: derive_title(&body, &stem),
-        body,
+        // 标题即文件名主干；正文保持用户输入，不再强制加 `# 标题` 首行
+        title: filename
+            .strip_suffix(".txt")
+            .unwrap_or(&filename)
+            .to_string(),
+        body: body.to_string(),
         created_at,
         updated_at,
         trashed: false,
@@ -807,6 +1143,9 @@ impl Store {
             fs::create_dir_all(target.join(RECYCLED_DIR))
                 .map_err(|error| format!("无法创建废纸篓目录：{error}"))?;
         }
+        if current.join(HISTORY_DIR).exists() {
+            copy_dir_recursive(&current.join(HISTORY_DIR), &target.join(HISTORY_DIR))?;
+        }
         let bytes = fs::read(current.join(WORKSPACE_FILE)).unwrap_or_default();
         if !bytes.is_empty() {
             fs::write(target.join(WORKSPACE_FILE), &bytes)
@@ -899,9 +1238,11 @@ mod tests {
         let payload = scan(&directory).unwrap();
         let ids: Vec<&str> = payload.notes.iter().map(|note| note.id.as_str()).collect();
         assert_eq!(ids, ["预算.txt", "b.txt", "recycled/旧.txt"]);
-        assert_eq!(payload.notes[0].title, "旅行预算");
+        // 标题即文件名主干；正文里的 `#` 只是内容标记
+        assert_eq!(payload.notes[0].title, "预算");
         assert!(!payload.notes[0].trashed);
         assert_eq!(payload.notes[1].title, "b");
+        assert_eq!(payload.notes[2].title, "旧");
         assert!(payload.notes[2].trashed);
         assert!(payload
             .notes
@@ -936,25 +1277,88 @@ mod tests {
         assert!(!directory.join("预算.txt").exists());
         move_note(&directory, "预算.txt", false).unwrap();
         assert!(directory.join("预算.txt").exists());
-        // 目标同名冲突
-        write_note(&directory, "recycled/预算.txt", "占位").unwrap();
+        // 目标同名冲突（recycled 里已有同名占位文件）
+        fs::write(directory.join(RECYCLED_DIR).join("预算.txt"), "占位").unwrap();
         assert!(move_note(&directory, "预算.txt", true).is_err());
         fs::remove_file(directory.join(RECYCLED_DIR).join("预算.txt")).unwrap();
-        // 运行时外部删除：ensure 按已知信息（文件名与首行标题）重建
+        // 运行时外部删除：ensure 重建同名空文件
         fs::remove_file(directory.join("预算.txt")).unwrap();
-        assert!(ensure_note(&directory, "预算.txt", "预算").unwrap());
-        assert_eq!(
-            fs::read_to_string(directory.join("预算.txt")).unwrap(),
-            "# 预算\n"
-        );
-        assert!(!ensure_note(&directory, "预算.txt", "预算").unwrap());
+        assert!(ensure_note(&directory, "预算.txt").unwrap());
+        assert_eq!(fs::read_to_string(directory.join("预算.txt")).unwrap(), "");
+        assert!(!ensure_note(&directory, "预算.txt").unwrap());
         // 永久删除（recycled 内）
         move_note(&directory, "预算.txt", true).unwrap();
         delete_note(&directory, "recycled/预算.txt").unwrap();
         assert!(!directory.join(RECYCLED_DIR).join("预算.txt").exists());
+        // 重载后的废纸篓 id 带 recycled/ 前缀：恢复必须落回数据目录
+        write_note(&directory, "预算.txt", "# 预算\n1").unwrap();
+        move_note(&directory, "预算.txt", true).unwrap();
+        move_note(&directory, "recycled/预算.txt", false).unwrap();
+        assert!(directory.join("预算.txt").exists());
+        assert!(!directory.join(RECYCLED_DIR).join("预算.txt").exists());
         // 越界路径被拒绝
         assert!(resolve_note_path(&directory, "../escape.txt").is_err());
         assert!(resolve_note_path(&directory, "recycled/../escape.txt").is_err());
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn rename_note_follows_title_and_handles_conflicts() {
+        let directory = temporary("rename");
+        fs::create_dir_all(directory.join(RECYCLED_DIR)).unwrap();
+        write_note(&directory, "预算.txt", "# 预算\n交通 = 186").unwrap();
+        write_note(&directory, "交通.txt", "占位").unwrap();
+        fs::write(directory.join(RECYCLED_DIR).join("旧.txt"), "# 旧的").unwrap();
+
+        // 正常改名：文件更名、正文不动、id 返回新文件名
+        let result = rename_note(&directory, "预算.txt", "周末出行").unwrap();
+        assert_eq!(result.id, "周末出行.txt");
+        assert_eq!(result.title, "周末出行");
+        assert!(!directory.join("预算.txt").exists());
+        assert_eq!(
+            fs::read_to_string(directory.join("周末出行.txt")).unwrap(),
+            "# 预算\n交通 = 186"
+        );
+        // 撞名自动加序号
+        let result = rename_note(&directory, "周末出行.txt", "交通").unwrap();
+        assert_eq!(result.id, "交通 2.txt");
+        assert_eq!(result.title, "交通 2");
+        // 同名改名是无操作（保留原 id）
+        let result = rename_note(&directory, "交通 2.txt", "交通 2").unwrap();
+        assert_eq!(result.id, "交通 2.txt");
+        // 用户带上扩展名也会剥掉
+        let result = rename_note(&directory, "交通 2.txt", "报销.TXT").unwrap();
+        assert_eq!(result.id, "报销.txt");
+        // 标题里的路径字符被替换，不越界
+        let result = rename_note(&directory, "报销.txt", "a/b:c").unwrap();
+        assert_eq!(result.id, "a-b-c.txt");
+        // 废纸篓里的笔记改名留在原层级，id 带前缀
+        let result = rename_note(&directory, "recycled/旧.txt", "归档").unwrap();
+        assert_eq!(result.id, "recycled/归档.txt");
+        assert!(!directory.join(RECYCLED_DIR).join("旧.txt").exists());
+        assert!(directory.join(RECYCLED_DIR).join("归档.txt").exists());
+        // 文件不存在时报错
+        assert!(rename_note(&directory, "没有.txt", "随便").is_err());
+        // 空标题退回兜底名
+        let result = rename_note(&directory, "a-b-c.txt", "  ").unwrap();
+        assert_eq!(result.id, "未命名.txt");
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn create_note_keeps_filename_as_title_and_empty_body() {
+        let directory = temporary("create");
+        let note = create_note(&directory, "随手计算", "").unwrap();
+        assert_eq!(note.id, "随手计算.txt");
+        assert_eq!(note.title, "随手计算");
+        assert_eq!(
+            fs::read_to_string(directory.join("随手计算.txt")).unwrap(),
+            ""
+        );
+        // 撞名加序号
+        let second = create_note(&directory, "随手计算", "1 + 1").unwrap();
+        assert_eq!(second.id, "随手计算 2.txt");
+        assert_eq!(second.body, "1 + 1");
         fs::remove_dir_all(directory).unwrap();
     }
 
@@ -1025,13 +1429,21 @@ mod tests {
             "dark",
             Some("预算.txt"),
             &FormatSettings::default(),
+            DEFAULT_HISTORY_LIMIT_KB,
         )
         .unwrap();
         let payload = scan(&directory).unwrap();
         assert_eq!(payload.active_id.as_deref(), Some("预算.txt"));
         assert_eq!(payload.theme, "dark");
         // 主题非法被拒绝
-        assert!(save_settings(&directory, "nope", None, &FormatSettings::default()).is_err());
+        assert!(save_settings(
+            &directory,
+            "nope",
+            None,
+            &FormatSettings::default(),
+            DEFAULT_HISTORY_LIMIT_KB
+        )
+        .is_err());
         // 当前笔记文件被外部删除后，保存设置时丢弃引用
         fs::remove_file(directory.join("预算.txt")).unwrap();
         save_settings(
@@ -1039,11 +1451,237 @@ mod tests {
             "light",
             Some("预算.txt"),
             &FormatSettings::default(),
+            DEFAULT_HISTORY_LIMIT_KB,
         )
         .unwrap();
         let settings: WorkspaceSettings =
             serde_json::from_slice(&fs::read(directory.join(WORKSPACE_FILE)).unwrap()).unwrap();
         assert_eq!(settings.active_id, None);
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn history_records_compacts_caps_and_follows_rename_delete() {
+        let directory = temporary("history");
+        // 测试用历史上限：128 KB
+        let test_limit: u64 = 128 * 1024;
+        write_note(&directory, "预算.txt", "# 预算\n100").unwrap();
+
+        // 当前小时内可以有多份（时分秒命名），列表最新在前
+        record_history(
+            &directory,
+            "预算.txt",
+            "第一版",
+            "2026-09-30-14-00-30",
+            test_limit,
+        )
+        .unwrap();
+        record_history(
+            &directory,
+            "预算.txt",
+            "第二版",
+            "2026-09-30-14-30-00",
+            test_limit,
+        )
+        .unwrap();
+        let entries = list_history(&directory, "预算.txt", "2026-09-30-14").unwrap();
+        assert_eq!(
+            entries
+                .iter()
+                .map(|entry| entry.name.as_str())
+                .collect::<Vec<_>>(),
+            ["2026-09-30-14-30-00", "2026-09-30-14-00-30"]
+        );
+        assert_eq!(entries[0].content, "第二版");
+        // 废纸篓前缀不影响归属
+        assert_eq!(
+            list_history(&directory, "recycled/预算.txt", "2026-09-30-14")
+                .unwrap()
+                .len(),
+            2
+        );
+        // 时间戳格式校验：缺秒、越界、非法名被拒绝
+        assert!(record_history(&directory, "预算.txt", "x", "2026-09-30-14", test_limit).is_err());
+        assert!(
+            record_history(&directory, "预算.txt", "x", "../evil-00-00-00", test_limit).is_err()
+        );
+        assert!(
+            record_history(&directory, "预算.txt", "x", "a/b-00-00-00-00", test_limit).is_err()
+        );
+        // 没有历史时列空表
+        assert!(list_history(&directory, "没有.txt", "2026-09-30-14")
+            .unwrap()
+            .is_empty());
+
+        // 留档更早的小时：该小时被整理为一份整点快照（留最后一份），当前小时不动
+        record_history(
+            &directory,
+            "预算.txt",
+            "上午一",
+            "2026-09-30-09-01-00",
+            test_limit,
+        )
+        .unwrap();
+        record_history(
+            &directory,
+            "预算.txt",
+            "上午二",
+            "2026-09-30-09-59-00",
+            test_limit,
+        )
+        .unwrap();
+        // 旧版 13 字符整点文件在同一小时参与整理并迁移命名
+        fs::write(
+            directory
+                .join("history")
+                .join("预算")
+                .join("2026-09-29-08.txt"),
+            "旧版",
+        )
+        .unwrap();
+        let entries = list_history(&directory, "预算.txt", "2026-09-30-09").unwrap();
+        let names: Vec<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
+        // 14 点已整理：只留整点命名的「第二版」
+        assert!(names.contains(&"2026-09-30-14-00-00"));
+        assert!(!names.contains(&"2026-09-30-14-30-00"));
+        assert_eq!(
+            entries
+                .iter()
+                .find(|entry| entry.name == "2026-09-30-14-00-00")
+                .unwrap()
+                .content,
+            "第二版"
+        );
+        // 09 点是列表时的当前小时，多份保留
+        assert!(names.contains(&"2026-09-30-09-01-00"));
+        assert!(names.contains(&"2026-09-30-09-59-00"));
+        // 旧版 08 点文件只有一份，无需整理，保留原名（列表兼容两种命名）
+        assert!(names.contains(&"2026-09-29-08"));
+        assert!(!names.contains(&"2026-09-29-08-00-00"));
+        // 再晚一小时列出：09 点也整理为一份整点（留最后一份）
+        let entries = list_history(&directory, "预算.txt", "2026-09-30-15").unwrap();
+        let nine = entries
+            .iter()
+            .find(|entry| entry.name == "2026-09-30-09-00-00")
+            .unwrap();
+        assert_eq!(nine.content, "上午二");
+        let names: Vec<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
+        assert!(!names.contains(&"2026-09-30-09-01-00"));
+
+        // 单篇 128KB 上限：超出后按时间桶从最早淘汰，最新一份永不淘汰
+        let big = "x".repeat(40_000);
+        for hour in 10..16 {
+            record_history(
+                &directory,
+                "预算.txt",
+                &big,
+                &format!("2026-09-29-{hour:02}-00-00"),
+                test_limit,
+            )
+            .unwrap();
+        }
+        let entries = list_history(&directory, "预算.txt", "2026-09-29-15").unwrap();
+        let total: usize = entries.iter().map(|entry| entry.content.len()).sum();
+        assert!(
+            (total as u64) <= test_limit,
+            "历史总量 {total} 应不超过 {test_limit}"
+        );
+        let names: Vec<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
+        for evicted in [
+            "2026-09-29-10-00-00",
+            "2026-09-29-11-00-00",
+            "2026-09-29-12-00-00",
+        ] {
+            assert!(!names.contains(&evicted), "最早的历史 {evicted} 应被淘汰");
+        }
+        for kept in [
+            "2026-09-29-13-00-00",
+            "2026-09-29-14-00-00",
+            "2026-09-29-15-00-00",
+        ] {
+            assert!(names.contains(&kept), "最近的历史 {kept} 应保留");
+        }
+
+        // 单份快照本身超过上限（超大笔记）：淘汰其余后保留最新一份，历史不全空
+        create_note(&directory, "大部头", "").unwrap();
+        let huge = "y".repeat(200_000);
+        record_history(
+            &directory,
+            "大部头.txt",
+            &huge,
+            "2026-09-30-10-00-00",
+            test_limit,
+        )
+        .unwrap();
+        record_history(
+            &directory,
+            "大部头.txt",
+            &huge,
+            "2026-09-30-11-00-00",
+            test_limit,
+        )
+        .unwrap();
+        let entries = list_history(&directory, "大部头.txt", "2026-09-30-11").unwrap();
+        assert_eq!(entries.len(), 1, "超大快照只保留最新一份");
+        assert_eq!(entries[0].name, "2026-09-30-11-00-00");
+
+        // 删除单条历史：秒级与旧整点名都可删，空目录一并清理；非法名拒绝
+        delete_history(&directory, "预算.txt", "2026-09-30-14-30-00").unwrap();
+        let entries = list_history(&directory, "预算.txt", "2026-09-30-14").unwrap();
+        let names: Vec<&str> = entries.iter().map(|entry| entry.name.as_str()).collect();
+        assert!(!names.contains(&"2026-09-30-14-30-00"));
+        assert!(names.contains(&"2026-09-30-09-00-00"));
+        assert!(delete_history(&directory, "预算.txt", "not-a-time").is_err());
+        assert!(delete_history(&directory, "预算.txt", "2026-09-30-14-30-00").is_ok());
+        // 历史关闭（上限 0）：留档调用清空该笔记的既有历史，不写入新快照
+        record_history(&directory, "大部头.txt", &huge, "2026-09-30-12-00-00", 0).unwrap();
+        assert!(!directory.join("history").join("大部头").exists());
+
+        // 改名：历史目录跟随
+        rename_note(&directory, "预算.txt", "出行").unwrap();
+        assert!(!directory.join("history").join("预算").exists());
+        assert!(!list_history(&directory, "出行.txt", "2026-09-29-15")
+            .unwrap()
+            .is_empty());
+        // 永久删除：历史目录一并清理
+        delete_note(&directory, "出行.txt").unwrap();
+        assert!(!directory.join("history").join("出行").exists());
+        // 大部头也清掉，避免干扰后面的启动清理断言
+        delete_note(&directory, "大部头.txt").unwrap();
+        // 启动清理：scan 删除没有对应笔记的孤儿历史目录，废纸篓笔记的保留
+        write_note(&directory, "预算.txt", "# 预算\n1").unwrap();
+        record_history(
+            &directory,
+            "预算.txt",
+            "有历史",
+            "2026-09-30-12-00-00",
+            test_limit,
+        )
+        .unwrap();
+        fs::create_dir_all(directory.join("history").join("孤儿")).unwrap();
+        move_note(&directory, "预算.txt", true).unwrap();
+        let payload = scan(&directory).unwrap();
+        assert!(directory.join("history").join("预算").exists());
+        assert!(!directory.join("history").join("孤儿").exists());
+        assert_eq!(payload.notes.len(), 1);
+        assert!(
+            !list_history(&directory, "recycled/预算.txt", "2026-09-30-12")
+                .unwrap()
+                .is_empty()
+        );
+        // 设置为 0（关闭历史）：启动扫描清空全部历史目录
+        fs::create_dir_all(directory.join("history").join("预算")).unwrap();
+        fs::write(
+            directory
+                .join("history")
+                .join("预算")
+                .join("2026-09-30-13-00-00.txt"),
+            "重启前的历史",
+        )
+        .unwrap();
+        save_settings(&directory, "light", None, &FormatSettings::default(), 0).unwrap();
+        scan(&directory).unwrap();
+        assert!(!directory.join("history").exists());
         fs::remove_dir_all(directory).unwrap();
     }
 
@@ -1068,7 +1706,14 @@ mod tests {
         fs::create_dir_all(&target).unwrap();
         fs::write(current.join("a.txt"), "# A").unwrap();
         fs::write(current.join(RECYCLED_DIR).join("b.txt"), "# B").unwrap();
-        save_settings(&current, "light", None, &FormatSettings::default()).unwrap();
+        save_settings(
+            &current,
+            "light",
+            None,
+            &FormatSettings::default(),
+            DEFAULT_HISTORY_LIMIT_KB,
+        )
+        .unwrap();
 
         let store = Store {
             config: root.join("config"),

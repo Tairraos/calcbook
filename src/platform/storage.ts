@@ -1,7 +1,13 @@
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { parseNoteBody, serializeNoteBody } from "../domain/format.ts";
 import { DEFAULT_FORMAT_SETTINGS } from "../domain/formatting.ts";
-import { EXAMPLES, type Note, parseWorkspace, type Workspace } from "../domain/notebook.ts";
+import {
+  EXAMPLES,
+  type HistoryEntry,
+  type Note,
+  parseWorkspace,
+  type Workspace,
+} from "../domain/notebook.ts";
 
 export const STORAGE_KEY = "calcbook.workspace.v1";
 export type StorageInfo = { directory: string; defaultDirectory: string; canChoose: boolean };
@@ -36,7 +42,7 @@ export async function calculatorStatus(): Promise<CalculatorStatus> {
 // 在系统文件管理器里显示笔记所在文件（桌面版）。
 export async function revealNoteFile(noteId: string): Promise<void> {
   if (!isTauri()) throw new Error("定位文件仅在桌面版可用。");
-  await invoke("reveal_note", { noteId });
+  await invoke("reveal_note", { noteId: resolveNoteId(noteId) });
 }
 
 // 记住主窗尺寸：桌面版存默认数据目录 ~/.calcbook/window.json（逻辑单位）。
@@ -79,8 +85,17 @@ export async function openProject(url: string): Promise<void> {
 }
 
 // 桌面版：文件系统是事实来源。快照用于把 React 状态的变更翻译成
-// 写文件 / 进出废纸篓 / 物理删除三类文件操作。
+// 写文件 / 改名 / 进出废纸篓 / 物理删除四类文件操作。
 let noteSnapshot: Map<string, { body: string; trashed: boolean }> = new Map();
+
+// 改名会把笔记 id（文件相对路径）换掉；排队中的旧 id 操作经此映射落到改名后的文件。
+const renamedIds = new Map<string, string>();
+
+function resolveNoteId(noteId: string): string {
+  let id = noteId;
+  while (renamedIds.has(id)) id = renamedIds.get(id) as string;
+  return id;
+}
 
 export async function loadWorkspace(): Promise<Workspace | null> {
   if (isTauri()) {
@@ -123,27 +138,30 @@ export async function loadWorkspace(): Promise<Workspace | null> {
 export async function saveWorkspace(workspace: Workspace): Promise<void> {
   const validated = parseWorkspace(workspace);
   if (isTauri()) {
-    // 设置（主题/当前笔记/格式）每次保存；笔记按快照差异落盘
+    // 设置（主题/当前笔记/格式/历史空间）每次保存；笔记按快照差异落盘
+    // 注意键名是 historyLimitKb：Tauri 把命令参数名规范化为 camelCase，结尾缩写 KB 会降为 Kb
     await invoke("save_workspace_settings", {
       theme: validated.theme,
       activeId: validated.activeId,
       format: validated.format,
+      historyLimitKb: validated.historyLimitKB,
     });
     for (const note of validated.notes) {
       const previous = noteSnapshot.get(note.id);
       const serialized = serializeNoteBody(note.body);
+      const noteId = resolveNoteId(note.id);
       if (!previous) {
-        await invoke("write_note", { noteId: note.id, body: serialized });
+        await invoke("write_note", { noteId, body: serialized });
       } else {
-        if (previous.body !== note.body)
-          await invoke("write_note", { noteId: note.id, body: serialized });
+        if (previous.body !== note.body) await invoke("write_note", { noteId, body: serialized });
         if (previous.trashed !== note.trashed)
-          await invoke("move_note", { noteId: note.id, toRecycled: note.trashed });
+          await invoke("move_note", { noteId, toRecycled: note.trashed });
       }
     }
     // 从状态里消失的笔记 = 永久删除，物理删除对应文件
+    // （改名后排队中的旧 id 状态经重定向比对，避免把改名后的文件误判成已删除）
     for (const id of noteSnapshot.keys()) {
-      if (!validated.notes.some((note) => note.id === id))
+      if (!validated.notes.some((note) => resolveNoteId(note.id) === id))
         await invoke("delete_note", { noteId: id });
     }
     noteSnapshot = new Map(
@@ -178,26 +196,116 @@ export async function createNoteFile(title: string, body: string): Promise<Note>
   return note;
 }
 
-// 运行期间文件被外部删除时：点击笔记按已知信息（文件名与首行标题）重建。
-export async function ensureNoteFile(noteId: string, title: string): Promise<void> {
+// 运行期间文件被外部删除时：点击笔记按已知信息重建。
+export async function ensureNoteFile(noteId: string): Promise<void> {
   if (!isTauri()) return;
-  await invoke("ensure_note", { noteId, title });
+  await invoke("ensure_note", { noteId: resolveNoteId(noteId) });
 }
 
-export type ImportedNote = { title: string; body: string };
+// 改名：标题即文件名主干。Rust 侧负责清洗与撞名加序号，返回新 id 与最终标题；
+// 旧 id 的排队操作经 renamedIds 重定向，快照随改名移动。浏览器预览无文件，标题原样返回。
+export async function renameNoteFile(
+  noteId: string,
+  title: string,
+): Promise<{ id: string; title: string }> {
+  if (!isTauri()) return { id: noteId, title };
+  const from = resolveNoteId(noteId);
+  const result = await invoke<{ id: string; title: string }>("rename_note", {
+    noteId: from,
+    title,
+  });
+  if (result.id !== from) {
+    for (const [key, value] of renamedIds) if (value === from) renamedIds.set(key, result.id);
+    renamedIds.set(from, result.id);
+  }
+  const entry = noteSnapshot.get(from);
+  if (entry) {
+    noteSnapshot.delete(from);
+    noteSnapshot.set(result.id, entry);
+  }
+  return result;
+}
 
-// 桌面版用原生文件对话框选一个 Numi 兼容的 .txt；返回 null 表示用户取消。
-export async function importNoteFile(): Promise<ImportedNote | null> {
-  if (!isTauri()) throw new Error("请在桌面应用中使用导入功能。");
-  const imported = await invoke<{ title: string; content: string } | null>("import_note");
-  return imported === null
-    ? null
-    : { title: imported.title, body: parseNoteBody(imported.content) };
+// 浏览器预览的历史走 localStorage（桌面版走数据目录 history/ 下按笔记名分目录），
+// 让历史功能在预览态也能验收。桌面版的每小时一桶与 1MB 上限由 Rust 保证。
+const PREVIEW_HISTORY_KEY = "calcbook.history.v1";
+
+function readPreviewHistory(): Record<string, Record<string, string>> {
+  try {
+    return JSON.parse(localStorage.getItem(PREVIEW_HISTORY_KEY) ?? "{}");
+  } catch {
+    return {};
+  }
+}
+
+// 记录一份历史：bucket 是本地时间的秒级时间戳（`年-月-日-时-分-秒`），当前小时可有多份；
+// limitBytes 是每篇笔记的历史空间上限（字节），0 = 已关闭：清空该笔记的既有历史，不写入。
+export async function recordHistoryFile(
+  noteId: string,
+  content: string,
+  bucket: string,
+  limitBytes: number,
+): Promise<void> {
+  if (!isTauri()) {
+    const history = readPreviewHistory();
+    if (limitBytes === 0) {
+      delete history[noteId];
+    } else {
+      const entries = history[noteId] ?? {};
+      entries[bucket] = content;
+      history[noteId] = entries;
+    }
+    localStorage.setItem(PREVIEW_HISTORY_KEY, JSON.stringify(history));
+    return;
+  }
+  await invoke("record_history", {
+    noteId: resolveNoteId(noteId),
+    content,
+    bucket,
+    limitBytes,
+  });
+}
+
+// 列出单篇笔记的全部历史，最新在前；currentHour 供桌面版整理旧小时（每小时归档为一份整点）。
+export async function listHistory(noteId: string, currentHour: string): Promise<HistoryEntry[]> {
+  if (!isTauri()) {
+    const entries = readPreviewHistory()[noteId] ?? {};
+    return Object.entries(entries)
+      .map(([name, content]) => ({ name, content }))
+      .sort((a, b) => b.name.localeCompare(a.name));
+  }
+  return invoke("list_history", { noteId: resolveNoteId(noteId), currentHour });
+}
+
+// 删除单条历史（bucket 为秒级时间戳或旧版整点名）；不存在时视为成功。
+export async function deleteHistoryFile(noteId: string, bucket: string): Promise<void> {
+  if (!isTauri()) {
+    const history = readPreviewHistory();
+    if (history[noteId]) {
+      delete history[noteId][bucket];
+      if (Object.keys(history[noteId]).length === 0) delete history[noteId];
+      localStorage.setItem(PREVIEW_HISTORY_KEY, JSON.stringify(history));
+    }
+    return;
+  }
+  await invoke("delete_history", { noteId: resolveNoteId(noteId), bucket });
+}
+
+// 本地时间的秒级时间戳（历史文件名 `年-月-日-时-分-秒`）与小时前缀（整理归档用）。
+// 由前端生成，避免 Rust 为此引入日期库。
+export function localTimestamp(date = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}-${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
+}
+
+export function localHourPrefix(): string {
+  return localTimestamp().slice(0, 13);
 }
 
 export async function guardNativeClose(
   flush: () => Promise<void>,
   failed: (message: string) => void,
+  beforeClose?: () => Promise<void>,
 ) {
   if (!isTauri()) return () => {};
   const { getCurrentWindow } = await import("@tauri-apps/api/window");
@@ -206,6 +314,7 @@ export async function guardNativeClose(
     event.preventDefault();
     try {
       await flush();
+      if (beforeClose) await beforeClose();
       await window.destroy();
     } catch {
       failed("保存失败，窗口已保留。请重试保存或导出笔记后再关闭。");

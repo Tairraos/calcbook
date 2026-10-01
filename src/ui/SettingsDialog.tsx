@@ -1,6 +1,7 @@
 import { ExternalLink, FolderOpen, X } from "lucide-react";
 import { useState } from "react";
 import { type FormatSettings, UNIT_STYLES, UNIT_SYSTEMS } from "../domain/formatting.ts";
+import { DEFAULT_HISTORY_LIMIT_KB, MAX_HISTORY_LIMIT_KB } from "../domain/notebook.ts";
 import { Dialog } from "./Dialog.tsx";
 import { IconButton } from "./IconButton.tsx";
 
@@ -31,6 +32,8 @@ export function SettingsDialog({
   canChooseDirectory,
   format,
   onChangeFormat,
+  historyLimitKB,
+  onChangeHistoryLimit,
   version,
   buildTime,
   githubUrl,
@@ -45,6 +48,8 @@ export function SettingsDialog({
   canChooseDirectory: boolean;
   format: FormatSettings;
   onChangeFormat: (settings: FormatSettings) => void;
+  historyLimitKB: number;
+  onChangeHistoryLimit: (limitKB: number) => void;
   version: string;
   buildTime: string;
   githubUrl: string;
@@ -57,6 +62,17 @@ export function SettingsDialog({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [failed, setFailed] = useState(false);
+  // 历史空间输入的草稿：只允许数字，失焦或回车时钳制提交
+  const [limitDraft, setLimitDraft] = useState<string | null>(null);
+  const commitHistoryLimit = () => {
+    const draft = limitDraft;
+    setLimitDraft(null);
+    if (draft === null) return;
+    const parsed = Number(draft);
+    if (Number.isInteger(parsed) && parsed >= 0 && parsed <= MAX_HISTORY_LIMIT_KB) {
+      onChangeHistoryLimit(parsed);
+    }
+  };
   async function changeDirectory() {
     setBusy(true);
     setMessage("");
@@ -120,14 +136,40 @@ export function SettingsDialog({
           )}
         </section>
 
-        <fieldset className="settings-section" aria-labelledby="format-title">
-          <legend id="format-title">格式</legend>
-          <p className="setting-hint format-lead">
-            算式的书写规范，改动立即生效；点顶栏「格式化」应用到当前笔记。
+        <section className="settings-section" aria-labelledby="history-title">
+          <div className="settings-row">
+            <h3 id="history-title">编辑历史</h3>
+            <span className="history-limit">
+              <span className="history-limit-label">为每个笔记分配历史版本空间</span>
+              <input
+                className="history-limit-input"
+                inputMode="numeric"
+                autoComplete="off"
+                value={limitDraft ?? String(historyLimitKB)}
+                aria-label="为每个笔记分配历史版本空间（KB）"
+                onChange={(event) => {
+                  const digits = event.target.value.replace(/\D/g, "").slice(0, 6);
+                  setLimitDraft(digits);
+                }}
+                onBlur={commitHistoryLimit}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") event.currentTarget.blur();
+                }}
+              />
+              KB
+            </span>
+          </div>
+          <p className="setting-hint">
+            默认 {DEFAULT_HISTORY_LIMIT_KB} KB。设为 0 关闭历史，将删除所有历史版本记录——
+            编辑到哪篇或重启应用时才删除，重启前可反悔；达到上限时从最早的快照开始淘汰，
+            最新一份始终保留。
           </p>
-          <p className="format-group-label" id="format-toggles-title">
-            空格与数字
-          </p>
+        </section>
+
+        <section className="settings-section" aria-labelledby="format-toggles-title">
+          <div className="settings-row">
+            <h3 id="format-toggles-title">格式化 - 空格与数字</h3>
+          </div>
           <div className="format-toggles">
             {TOGGLES.map(({ key, label, hint }) => (
               <label className="format-option" key={key}>
@@ -143,6 +185,9 @@ export function SettingsDialog({
               </label>
             ))}
           </div>
+        </section>
+
+        <section className="settings-section" aria-labelledby="format-style-title">
           <div className="format-radio-groups">
             <div
               role="radiogroup"
@@ -150,7 +195,7 @@ export function SettingsDialog({
               className="format-radio-col"
             >
               <p className="format-group-label" id="format-style-title">
-                单位写法
+                格式化 - 单位写法
               </p>
               <div className="format-radio-row">
                 {UNIT_STYLES.map((value) => (
@@ -173,7 +218,7 @@ export function SettingsDialog({
               className="format-radio-col"
             >
               <p className="format-group-label" id="format-system-title">
-                单位制
+                格式化 - 单位制
               </p>
               <div className="format-radio-row">
                 {UNIT_SYSTEMS.map((value) => (
@@ -195,7 +240,7 @@ export function SettingsDialog({
             自由：保留原文写法。公制/英制/市制：格式化时把一行里的其它制式换算过来（公制 &gt; 英制
             &gt; 市制）。
           </p>
-        </fieldset>
+        </section>
 
         <section className="settings-section about-section" aria-labelledby="about-title">
           <div className="about-brand">

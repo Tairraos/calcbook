@@ -370,7 +370,7 @@ dependencies = [
 
 [[package]]
 name = "calcbook"
-version = "1.0.0"
+version = "1.4.4"
 dependencies = [
  "objc2-app-kit",
  "objc2-foundation",
