@@ -1,6 +1,6 @@
 [package]
 name = "calcbook"
-version = "1.5.0"
+version = "1.5.1"
 description = "A quiet calculator notebook"
 authors = ["Tairraos"]
 edition = "2021"
