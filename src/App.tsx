@@ -81,6 +81,39 @@ import { useWorkspace } from "./useWorkspace.ts";
 const date = (value: string) =>
   new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric" }).format(new Date(value));
 
+// 等宽字体列宽估算：CJK/全角按 1em（14px），其余按 0.6em；水平滚动只需保证匹配可见，允许近似
+const columnWidth = (text: string) => {
+  let width = 0;
+  for (const ch of text) width += (ch.codePointAt(0) ?? 0) > 0x2e7f ? 14 : 8.4;
+  return width;
+};
+
+// 滚动定位到匹配：垂直用镜像层高亮行的真实布局位置（getBoundingClientRect，不受 DOM 结构影响），
+// 水平按列宽估算 textarea 的 scrollLeft；已在视口内则不滚动，避免跳动。
+function scrollMatchIntoView(textarea: HTMLTextAreaElement, match: MatchRange) {
+  const scroller = textarea.closest(".editor-scroll");
+  const before = textarea.value.slice(0, match.start);
+  const line = before.split("\n").length - 1;
+  if (scroller instanceof HTMLElement) {
+    const lineEl = scroller.querySelectorAll(".code-line")[line];
+    if (lineEl) {
+      const y =
+        lineEl.getBoundingClientRect().top -
+        scroller.getBoundingClientRect().top +
+        scroller.scrollTop;
+      if (y < scroller.scrollTop + 40 || y > scroller.scrollTop + scroller.clientHeight - 60) {
+        scroller.scrollTop = Math.max(0, y - scroller.clientHeight / 3);
+      }
+    }
+  }
+  const columnText = before.slice(before.lastIndexOf("\n") + 1);
+  const x = columnWidth(columnText);
+  if (x < textarea.scrollLeft + 20) textarea.scrollLeft = Math.max(0, x - 60);
+  else if (x > textarea.scrollLeft + textarea.clientWidth - 60) {
+    textarea.scrollLeft = x - textarea.clientWidth * 0.6;
+  }
+}
+
 export default function App() {
   // 关闭前留档：闭包经 ref 传递，指向最新的记录函数（见 recordCurrentRef）。
   const recordCurrentRef = useRef<() => Promise<void>>(() => Promise.resolve());
@@ -141,19 +174,15 @@ export default function App() {
   const findMatchesRef = useRef<MatchRange[]>([]);
   findMatchesRef.current = findMatchesList;
 
-  // 跳到第 index 个匹配：短暂聚焦编辑器以利用原生 caret 滚动定位（垂直/水平都精确），
-  // 随后把焦点还给查找/替换输入框；选区保留，Esc 关闭浮动条后即见。
+  // 跳到第 index 个匹配：不抢焦点（避免输入查找词时焦点在编辑器与查找框之间来回），
+  // 只设选区并手动滚动定位；选区在 Esc 关闭浮动条、焦点回编辑器后立即可见。
   const gotoMatch = useCallback((index: number) => {
     const match = findMatchesRef.current[index];
     setActiveMatchIndex(match ? index : -1);
     const textarea = editorRef.current;
     if (!match || !textarea) return;
-    const restore = document.activeElement;
-    textarea.focus();
     textarea.setSelectionRange(match.start, match.end);
-    if (restore === findQueryRef.current || restore === findReplaceRef.current) {
-      (restore as HTMLElement).focus();
-    }
+    scrollMatchIntoView(textarea, match);
   }, []);
 
   // 匹配列表变化后的序号校正：查询/开关变化（正文未动）时实时选中最近匹配；
