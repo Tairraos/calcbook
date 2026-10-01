@@ -38,6 +38,8 @@
   --selection: #73acd344; /* 文本选中高亮（半透明蓝）：全站 ::selection */
   --focus-caret: #000000; /* 三个输入区（搜索/算式/编辑器）的文本光标颜色 */
   --calc-screen-focus: #f5f7f1; /* 计算器算式屏聚焦时的底色（淡绿调） */
+  --find-match: rgba(202, 156, 44, 0.28); /* 查找替换：编辑器镜像层全部匹配底色（淡金） */
+  --find-match-active: rgba(202, 156, 44, 0.55); /* 查找替换：当前匹配底色（深金） */
 }
 
 [data-theme="dark"] {
@@ -76,4 +78,6 @@
   --selection: #6cc4ee40; /* 文本选中高亮（半透明蓝）：全站 ::selection */
   --focus-caret: #ffffff; /* 三个输入区（搜索/算式/编辑器）的文本光标颜色 */
   --calc-screen-focus: #262a21; /* 计算器算式屏聚焦时的底色（暗绿调） */
+  --find-match: rgba(255, 194, 45, 0.22); /* 查找替换：编辑器镜像层全部匹配底色（暗金） */
+  --find-match-active: rgba(255, 194, 45, 0.48); /* 查找替换：当前匹配底色（亮金） */
 }

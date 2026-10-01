@@ -1138,6 +1138,8 @@ export default function App() {
                 onActiveLine={handleActiveLine}
                 editorRef={editorRef}
                 readOnly={selected.trashed}
+                findMatches={findMatchesList}
+                activeMatchIndex={activeMatchIndex}
               />
             </div>
             <footer className="statusbar">

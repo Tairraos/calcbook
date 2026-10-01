@@ -696,6 +696,20 @@ kbd {
 .syntax-operator {
   color: var(--operator);
 }
+/* 查找匹配高亮：镜像层内联包覆，不影响文本布局；零宽匹配渲染为 2px 指示条 */
+.code-line .find-match {
+  background: var(--find-match);
+  border-radius: 2px;
+}
+.code-line .find-match.is-active {
+  background: var(--find-match-active);
+}
+.code-line .find-match.is-empty {
+  display: inline-block;
+  width: 2px;
+  height: 1em;
+  vertical-align: text-bottom;
+}
 .editor-input {
   position: absolute;
   inset: 0;

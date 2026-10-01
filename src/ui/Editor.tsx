@@ -1,13 +1,17 @@
 // biome-ignore-all lint/suspicious/noArrayIndexKey: This stateless text mirror is keyed by line/token position to preserve the native textarea.
 import { Check, Copy, TriangleAlert } from "lucide-react";
 import {
+  Fragment,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
   type RefObject,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 import type { LineResult } from "../domain/calculation.ts";
 import { MAX_NOTE_LENGTH } from "../domain/notebook.ts";
+import type { MatchRange } from "../domain/search.ts";
 
 type Props = {
   body: string;
@@ -20,40 +24,107 @@ type Props = {
   readOnly?: boolean;
   // 一次性删除 5 行以上（大选区剪切/删除）时先回调，用于破坏性操作前留档。
   onDestructiveChange?: () => void;
+  // 查找替换：正文绝对偏移的匹配列表与当前匹配下标；空数组/未传时不渲染高亮
+  findMatches?: MatchRange[];
+  activeMatchIndex?: number;
 };
+
+// 行内匹配段（相对行首的偏移），active 为当前匹配
+type LineMark = { start: number; end: number; active: boolean };
 
 const writeToClipboard = (text: string): Promise<void> =>
   typeof navigator.clipboard?.writeText === "function"
     ? navigator.clipboard.writeText(text)
     : Promise.reject(new Error("剪贴板不可用"));
 
-function Highlight({ line }: { line: LineResult }) {
-  if (line.kind === "note") return <span className="syntax-comment">{line.source}</span>;
-  // 行尾注释（// 或 #）用注释色渲染；计算结果落在右侧结果区
+type Token = { text: string; cls?: string };
+
+// 语法着色 token 化：数字与运算符上色，行尾注释（// 或 #）用注释色
+function tokenizeLine(line: LineResult): Token[] {
+  if (line.kind === "note") return [{ text: line.source, cls: "syntax-comment" }];
   const comment = /^(.*?)(\s(?:\/\/|#).*)$/.exec(line.source);
   const source = comment ? comment[1] : line.source;
-  const parts = source.split(/(\d+(?:\.\d+)?|[=+\-×÷*/%()[\]{}:：])/g).map((part, index) => (
-    <span
-      key={`${index}-${part}`}
-      className={
-        /^\d/.test(part)
-          ? "syntax-number"
-          : /^[=+\-×÷*/%()[\]{}:：]$/.test(part)
-            ? "syntax-operator"
-            : undefined
-      }
-    >
-      {part}
+  const tokens: Token[] = source
+    .split(/(\d+(?:\.\d+)?|[=+\-×÷*/%()[\]{}:：])/g)
+    .filter((part) => part !== "")
+    .map((part) => ({
+      text: part,
+      cls: /^\d/.test(part)
+        ? "syntax-number"
+        : /^[=+\-×÷*/%()[\]{}:：]$/.test(part)
+          ? "syntax-operator"
+          : undefined,
+    }));
+  if (comment) tokens.push({ text: comment[2], cls: "syntax-comment" });
+  return tokens;
+}
+
+const renderTokens = (tokens: Token[], keyPrefix: string) =>
+  tokens.map((token, index) => (
+    <span key={`${keyPrefix}-${index}`} className={token.cls}>
+      {token.text}
     </span>
   ));
-  return comment ? (
-    <>
-      {parts}
-      <span className="syntax-comment">{comment[2]}</span>
-    </>
-  ) : (
-    parts
-  );
+
+// 查找匹配高亮：把行文本按匹配边界切段，用内联 span 包覆（不改变文本布局，CJK 不错位）；
+// 零宽匹配（如 a* 的空命中）渲染为 2px 指示条
+function Highlight({ line, marks }: { line: LineResult; marks?: LineMark[] }) {
+  const tokens = tokenizeLine(line);
+  if (!marks || marks.length === 0) return <>{renderTokens(tokens, "t")}</>;
+  const normal = marks.filter((m) => m.end > m.start).sort((a, b) => a.start - b.start);
+  const zero = marks.filter((m) => m.end === m.start);
+  const bounds = new Set<number>([0, line.source.length]);
+  for (const m of normal) {
+    bounds.add(m.start);
+    bounds.add(m.end);
+  }
+  const points = [...bounds].sort((a, b) => a - b);
+  const out: ReactNode[] = [];
+  let key = 0;
+  const zeroAt = (pos: number) =>
+    zero
+      .filter((m) => m.start === pos)
+      .map((m) => (
+        <span key={`z-${pos}`} className={`find-match is-empty ${m.active ? "is-active" : ""}`} />
+      ));
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const start = points[i];
+    const end = points[i + 1];
+    if (start === end) continue;
+    const mark = normal.find((m) => m.start <= start && end <= m.end) ?? null;
+    const segTokens: Token[] = [];
+    let offset = 0;
+    for (const token of tokens) {
+      const tokenStart = offset;
+      offset += token.text.length;
+      const from = Math.max(start, tokenStart);
+      const to = Math.min(end, offset);
+      if (from < to)
+        segTokens.push({
+          text: token.text.slice(from - tokenStart, to - tokenStart),
+          cls: token.cls,
+        });
+    }
+    const content = (
+      <>
+        {zeroAt(start)}
+        {renderTokens(segTokens, `s${key}`)}
+      </>
+    );
+    out.push(
+      mark ? (
+        <span key={`m${key}`} className={`find-match ${mark.active ? "is-active" : ""}`}>
+          {content}
+        </span>
+      ) : (
+        <Fragment key={`p${key}`}>{content}</Fragment>
+      ),
+    );
+    key += 1;
+  }
+  // 行尾位置的零宽匹配（没有以它为起点的段，单独补上）
+  out.push(...zeroAt(line.source.length));
+  return <>{out}</>;
 }
 
 export function Editor({
@@ -66,8 +137,33 @@ export function Editor({
   editorRef,
   readOnly,
   onDestructiveChange,
+  findMatches,
+  activeMatchIndex,
 }: Props) {
   const [scrollLeft, setScrollLeft] = useState(0);
+  // 每行行首的正文绝对偏移（镜像行与正文行 1:1）
+  const lineStarts = useMemo(() => {
+    const starts = [0];
+    for (let i = 0; i < body.length; i += 1) if (body[i] === "\n") starts.push(i + 1);
+    return starts;
+  }, [body]);
+  // 把绝对偏移的匹配裁剪到本行（跨行匹配按行切分），转为行内偏移
+  const marksForLine = (index: number): LineMark[] | undefined => {
+    if (!findMatches || findMatches.length === 0) return undefined;
+    const lineStart = lineStarts[index];
+    if (lineStart === undefined) return undefined;
+    const lineEnd = index + 1 < lineStarts.length ? lineStarts[index + 1] - 1 : body.length;
+    const marks: LineMark[] = [];
+    findMatches.forEach((match, matchIndex) => {
+      if (match.end < lineStart || match.start > lineEnd) return;
+      marks.push({
+        start: Math.max(match.start, lineStart) - lineStart,
+        end: Math.min(match.end, lineEnd) - lineStart,
+        active: matchIndex === activeMatchIndex,
+      });
+    });
+    return marks.length > 0 ? marks : undefined;
+  };
   const [copiedLine, setCopiedLine] = useState<number | null>(null);
   const count = Math.max(13, results.length + 2);
   const height = count * 34 + 32;
@@ -195,7 +291,7 @@ export function Editor({
                 className={`code-line ${index === activeLine ? "is-active" : ""}`}
                 key={`source-${index}`}
               >
-                <Highlight line={line} />
+                <Highlight line={line} marks={marksForLine(index)} />
                 {"\u200b"}
               </div>
             ))}
