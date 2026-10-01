@@ -317,12 +317,35 @@ export default function App() {
     document.title = `${selected?.title || "calcbook"} · calcbook`;
   }, [workspace?.theme, selected?.title]);
 
+  // 状态栏「n 处待检查」的循环序号：点击会让编辑器失焦，不能读当前光标位置推算下一个
+  const errorNavRef = useRef(-1);
   // 活动行回到第一行：换笔记时重置 ref，避免失焦改写拿旧行号碰新笔记。
   const resetActiveLine = useCallback(() => {
     activeLineRef.current = 0;
     setActiveLine(0);
     formatUndoRef.current = null;
+    errorNavRef.current = -1;
   }, []);
+
+  // 点击把光标依次停在每个错误行的行尾（循环），焦点还回编辑器。
+  function gotoNextError() {
+    const textarea = editorRef.current;
+    if (!textarea || !selected) return;
+    const errorLines = results
+      .map((line, index) => (line.kind === "error" ? index : -1))
+      .filter((index) => index >= 0);
+    if (errorLines.length === 0) return;
+    errorNavRef.current = (errorNavRef.current + 1) % errorLines.length;
+    const lineIndex = errorLines[errorNavRef.current];
+    const lines = selected.body.split("\n");
+    let pos = 0;
+    for (let i = 0; i < lineIndex && i < lines.length; i += 1) pos += lines[i].length + 1;
+    pos += lines[lineIndex]?.length ?? 0; // 行尾
+    textarea.focus();
+    textarea.setSelectionRange(pos, pos);
+    handleActiveLine(Math.min(lineIndex, lines.length - 1));
+    scrollMatchIntoView(textarea, { start: pos, end: pos });
+  }
 
   useEffect(() => {
     let disposed = false;
@@ -1157,7 +1180,16 @@ export default function App() {
               <span>
                 <span className="status-dot" />
                 {resultCount} 条计算
-                {errorCount > 0 && <span className="error-count"> · {errorCount} 处待检查</span>}
+                {errorCount > 0 && (
+                  <button
+                    type="button"
+                    className="error-count"
+                    title="点击依次定位到每个错误行（光标停行尾，循环）"
+                    onClick={gotoNextError}
+                  >
+                    · {errorCount} 处待检查
+                  </button>
+                )}
               </span>
               <span>
                 第 {Math.min(activeLine + 1, results.length)} 行

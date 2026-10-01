@@ -1011,6 +1011,14 @@ kbd {
 }
 .error-count {
   color: var(--error);
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 3px;
+}
+.error-count:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 /* 计算器独立窗口：右上角「历史」按钮，主体 + 可选的最近计算侧栏。 */
 .calculator-window {
