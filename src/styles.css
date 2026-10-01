@@ -569,6 +569,10 @@ kbd {
   padding: 0;
   min-width: 0;
 }
+/* 标题输入不画聚焦框：文本光标已足够表达焦点（与搜索框、算式屏同约定） */
+.note-title:focus-visible {
+  outline: none;
+}
 .note-meta {
   display: flex;
   align-items: center;
@@ -1030,6 +1034,11 @@ kbd {
   height: 9px;
   background: var(--strong-border);
   margin: 0 4px;
+}
+/* 状态栏分隔符：普通文字色、不参与 hover 下划线；负外边距抵消父级 6px gap，收成 3px */
+.statusbar-sep {
+  color: var(--muted);
+  margin: 0 -3px;
 }
 .error-count {
   color: var(--error);
