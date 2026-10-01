@@ -38,6 +38,16 @@ import {
   type Note,
 } from "./domain/notebook.ts";
 import {
+  buildMatcher,
+  DEFAULT_SEARCH_OPTIONS,
+  findMatches,
+  type MatchRange,
+  matchIndexAtOrAfter,
+  replaceAllText,
+  type SearchOptions,
+  stepMatchIndex,
+} from "./domain/search.ts";
+import {
   CALCULATOR_INSERT_EVENT,
   CALCULATOR_READY_EVENT,
   CALCULATOR_THEME_EVENT,
@@ -61,6 +71,7 @@ import {
 } from "./platform/storage.ts";
 import { Dialog } from "./ui/Dialog.tsx";
 import { Editor } from "./ui/Editor.tsx";
+import { FindReplaceBar } from "./ui/FindReplaceBar.tsx";
 import { HelpDialog } from "./ui/HelpDialog.tsx";
 import { HistoryDialog, historyLabel } from "./ui/HistoryDialog.tsx";
 import { IconButton } from "./ui/IconButton.tsx";
@@ -87,6 +98,15 @@ export default function App() {
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const activeLineRef = useRef(0);
+  // 查找替换浮动条：状态在 App 层，匹配引擎在 domain/search.ts
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQuery, setFindQuery] = useState("");
+  const [findOptions, setFindOptions] = useState<SearchOptions>(DEFAULT_SEARCH_OPTIONS);
+  const [findReplaceOpen, setFindReplaceOpen] = useState(false);
+  const [findReplacement, setFindReplacement] = useState("");
+  const [activeMatchIndex, setActiveMatchIndex] = useState(-1);
+  const findQueryRef = useRef<HTMLInputElement>(null);
+  const findReplaceRef = useRef<HTMLInputElement>(null);
 
   const notes = workspace?.notes ?? [];
   const trashCount = notes.filter((note) => note.trashed).length;
@@ -108,6 +128,154 @@ export default function App() {
   );
   const resultCount = results.filter((line) => line.kind === "result").length;
   const errorCount = results.filter((line) => line.kind === "error").length;
+
+  // 查找替换：匹配结果随查询/开关/正文派生；ref 镜像供回调读取最新列表，避免闭包过期
+  const findMatcher = useMemo(() => buildMatcher(findQuery, findOptions), [findQuery, findOptions]);
+  const findMatchesList = useMemo<MatchRange[]>(
+    () =>
+      findOpen && findMatcher.pattern && selected
+        ? findMatches(selected.body, findMatcher.pattern)
+        : [],
+    [findOpen, findMatcher, selected],
+  );
+  const findMatchesRef = useRef<MatchRange[]>([]);
+  findMatchesRef.current = findMatchesList;
+
+  // 跳到第 index 个匹配：短暂聚焦编辑器以利用原生 caret 滚动定位（垂直/水平都精确），
+  // 随后把焦点还给查找/替换输入框；选区保留，Esc 关闭浮动条后即见。
+  const gotoMatch = useCallback((index: number) => {
+    const match = findMatchesRef.current[index];
+    setActiveMatchIndex(match ? index : -1);
+    const textarea = editorRef.current;
+    if (!match || !textarea) return;
+    const restore = document.activeElement;
+    textarea.focus();
+    textarea.setSelectionRange(match.start, match.end);
+    if (restore === findQueryRef.current || restore === findReplaceRef.current) {
+      (restore as HTMLElement).focus();
+    }
+  }, []);
+
+  // 匹配列表变化后的序号校正：查询/开关变化（正文未动）时实时选中最近匹配；
+  // 正文变化（手动编辑或替换）时只校正序号，不抢选区。
+  const findBodyRef = useRef<string | null>(null);
+  useEffect(() => {
+    const body = selected?.body ?? null;
+    const bodyUnchanged = findBodyRef.current !== null && findBodyRef.current === body;
+    findBodyRef.current = body;
+    if (!findOpen) return;
+    if (findMatchesList.length === 0) {
+      setActiveMatchIndex(-1);
+      return;
+    }
+    const caret = editorRef.current?.selectionStart ?? 0;
+    const next = matchIndexAtOrAfter(findMatchesList, caret);
+    if (bodyUnchanged) gotoMatch(next);
+    else setActiveMatchIndex(next);
+  }, [findMatchesList, findOpen, selected?.body, gotoMatch]);
+
+  const openFind = useCallback(() => {
+    if (!selected) return;
+    const textarea = editorRef.current;
+    if (textarea) {
+      const selectedText = textarea.value.slice(textarea.selectionStart, textarea.selectionEnd);
+      // 单行选区自动带入查找框；无选区保留上次查询（与 VS Code 一致）
+      if (selectedText && !selectedText.includes("\n")) setFindQuery(selectedText);
+    }
+    setFindOpen(true);
+    requestAnimationFrame(() => {
+      findQueryRef.current?.focus();
+      findQueryRef.current?.select();
+    });
+  }, [selected]);
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false);
+    setActiveMatchIndex(-1);
+    // 焦点还回编辑器，当前匹配的选区随之可见
+    editorRef.current?.focus();
+  }, []);
+
+  // 编辑器内按 Esc 也关闭浮动条（查找/替换输入框的 Esc 由组件自行处理）
+  useEffect(() => {
+    if (!findOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.isComposing) return;
+      if (document.activeElement === editorRef.current) closeFind();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [findOpen, closeFind]);
+
+  function stepMatch(direction: 1 | -1) {
+    gotoMatch(stepMatchIndex(activeMatchIndex, direction, findMatchesRef.current.length));
+  }
+
+  // 单个替换：选中匹配后 execCommand 插入，保留原生撤销栈（可逐步 Cmd+Z）；
+  // 替换后正文变化触发上方 effect，序号自动落到下一处匹配（替换即前进）。
+  function replaceCurrentMatch() {
+    const textarea = editorRef.current;
+    const match = findMatchesList[activeMatchIndex];
+    if (!textarea || !selected || selected.trashed || !match) return;
+    if (
+      selected.body.length - (match.end - match.start) + findReplacement.length >
+      MAX_NOTE_LENGTH
+    ) {
+      setNotice("替换后将超过笔记长度上限，未执行。");
+      return;
+    }
+    textarea.focus();
+    textarea.setSelectionRange(match.start, match.end);
+    let inserted = false;
+    try {
+      inserted = document.execCommand("insertText", false, findReplacement);
+    } catch {
+      inserted = false;
+    }
+    if (!inserted) {
+      // execCommand 不可用：回退 React 状态替换，用格式化同款应用内撤销兜底
+      const nextBody =
+        selected.body.slice(0, match.start) + findReplacement + selected.body.slice(match.end);
+      formatUndoRef.current = { noteId: selected.id, previous: selected.body, formatted: nextBody };
+      patchNote({ body: nextBody });
+    }
+    findReplaceRef.current?.focus();
+  }
+
+  // 全部替换：先留档（破坏性操作），再整篇 execCommand 替换——一次 Cmd+Z 整体还原；
+  // 回退路径走 React 状态替换 + formatUndoRef 应用内撤销（与格式化同范式）。
+  function replaceAllMatches() {
+    const textarea = editorRef.current;
+    if (!selected || selected.trashed || !findMatcher.pattern) return;
+    const { text, count } = replaceAllText(
+      selected.body,
+      findMatcher.pattern,
+      findReplacement,
+      !findOptions.regex,
+    );
+    if (count === 0) return;
+    if (text.length > MAX_NOTE_LENGTH) {
+      setNotice("替换后将超过笔记长度上限，未执行。");
+      return;
+    }
+    void recordNoteHistory(selected.id, selected.body);
+    formatUndoRef.current = { noteId: selected.id, previous: selected.body, formatted: text };
+    if (textarea) {
+      textarea.focus();
+      textarea.setSelectionRange(0, textarea.value.length);
+      try {
+        if (document.execCommand("insertText", false, text)) {
+          setNotice(`已替换 ${count} 处`);
+          findReplaceRef.current?.focus();
+          return;
+        }
+      } catch {
+        // execCommand 不可用时走状态替换
+      }
+    }
+    patchNote({ body: text });
+    setNotice(`已替换 ${count} 处`);
+  }
 
   useEffect(() => {
     document.documentElement.dataset.theme = workspace?.theme ?? "light";
@@ -560,6 +728,11 @@ export default function App() {
         return;
       }
       if (helpOpen || settingsOpen) return;
+      if (event.key.toLowerCase() === "f") {
+        event.preventDefault();
+        openFind();
+        return;
+      }
       if (event.key.toLowerCase() === "n") {
         event.preventDefault();
         void newNote();
@@ -591,6 +764,7 @@ export default function App() {
     update,
     selected?.body,
     selected?.id,
+    openFind,
   ]);
 
   if (!workspace)
@@ -896,20 +1070,47 @@ export default function App() {
                 </button>
               </div>
             )}
-            <Editor
-              key={selected.id}
-              body={selected.body}
-              results={results}
-              onChange={(body) => patchNote({ body })}
-              onCopy={(text) => void copy(text)}
-              onDestructiveChange={() => {
-                if (selected) void recordNoteHistory(selected.id, selected.body);
-              }}
-              activeLine={activeLine}
-              onActiveLine={handleActiveLine}
-              editorRef={editorRef}
-              readOnly={selected.trashed}
-            />
+            <div className="find-host">
+              {findOpen && (
+                <FindReplaceBar
+                  query={findQuery}
+                  onQuery={setFindQuery}
+                  options={findOptions}
+                  onToggleOption={(key) =>
+                    setFindOptions((before) => ({ ...before, [key]: !before[key] }))
+                  }
+                  error={findMatcher.error}
+                  matchCount={findMatchesList.length}
+                  activeIndex={activeMatchIndex}
+                  replaceOpen={findReplaceOpen}
+                  onToggleReplace={() => setFindReplaceOpen(!findReplaceOpen)}
+                  canReplace={!selected.trashed}
+                  replacement={findReplacement}
+                  onReplacement={setFindReplacement}
+                  onNext={() => stepMatch(1)}
+                  onPrevious={() => stepMatch(-1)}
+                  onReplace={replaceCurrentMatch}
+                  onReplaceAll={replaceAllMatches}
+                  onClose={closeFind}
+                  queryRef={findQueryRef}
+                  replaceRef={findReplaceRef}
+                />
+              )}
+              <Editor
+                key={selected.id}
+                body={selected.body}
+                results={results}
+                onChange={(body) => patchNote({ body })}
+                onCopy={(text) => void copy(text)}
+                onDestructiveChange={() => {
+                  if (selected) void recordNoteHistory(selected.id, selected.body);
+                }}
+                activeLine={activeLine}
+                onActiveLine={handleActiveLine}
+                editorRef={editorRef}
+                readOnly={selected.trashed}
+              />
+            </div>
             <footer className="statusbar">
               <span>
                 <span className="status-dot" />
