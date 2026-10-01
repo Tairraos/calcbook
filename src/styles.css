@@ -71,10 +71,10 @@ textarea {
 }
 button:focus-visible,
 a:focus-visible,
-input:focus-visible,
 textarea:focus-visible {
   outline: 2px solid var(--green);
 }
+/* 文本输入框不画聚焦外框：光标闪烁已足够表达焦点（含查找替换、侧栏搜索、设置项） */
 button {
   transition:
     background 140ms ease,
@@ -755,7 +755,8 @@ kbd {
 }
 .find-bar {
   position: absolute;
-  top: 6px;
+  /* 上移避让首行文本与结果列：展开替换行后也不压住正文内容 */
+  top: -34px;
   right: 14px;
   z-index: 5;
   display: flex;
@@ -835,6 +836,15 @@ kbd {
   color: var(--green);
   background: var(--sage);
   box-shadow: inset 0 0 0 1px var(--sage-border);
+}
+/* 正则开关的 ASCII 字形：等宽字体保证「.」落在基线上，区别于 lucide 悬空圆点 */
+.find-toggle-glyph {
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.5px;
+  transform: translateY(-0.5px);
 }
 .find-count {
   min-width: 52px;
@@ -1564,7 +1574,7 @@ kbd {
 }
 .history-limit-input:focus-visible {
   outline: none;
-  border-color: var(--green);
+  border-color: var(--strong-border);
 }
 .secondary-button {
   display: inline-flex;

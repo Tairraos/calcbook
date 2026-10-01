@@ -4,7 +4,6 @@ import {
   CaseSensitive,
   ChevronDown,
   ChevronRight,
-  Regex,
   Replace,
   ReplaceAll,
   WholeWord,
@@ -41,11 +40,13 @@ type Props = {
 const OPTION_TOGGLES: {
   key: keyof SearchOptions;
   title: string;
-  Icon: typeof CaseSensitive;
+  Icon?: typeof CaseSensitive;
+  // lucide 的 Regex 图标圆点悬在半空、更像中文句号，正则开关改用 ASCII 文本字形 ".*"
+  glyph?: string;
 }[] = [
   { key: "caseSensitive", title: "区分大小写", Icon: CaseSensitive },
   { key: "wholeWord", title: "全词匹配（中文无词边界，对纯中文词不生效）", Icon: WholeWord },
-  { key: "regex", title: "使用正则表达式", Icon: Regex },
+  { key: "regex", title: "使用正则表达式", glyph: ".*" },
 ];
 
 // 输入法组合中的 Enter/Escape 属于组词，不触发导航或关闭
@@ -129,7 +130,7 @@ export function FindReplaceBar({
             onChange={(event) => onQuery(event.target.value)}
             onKeyDown={handleQueryKeyDown}
           />
-          {OPTION_TOGGLES.map(({ key, title, Icon }) => (
+          {OPTION_TOGGLES.map(({ key, title, Icon, glyph }) => (
             <button
               key={key}
               type="button"
@@ -139,7 +140,13 @@ export function FindReplaceBar({
               aria-pressed={options[key]}
               onClick={() => onToggleOption(key)}
             >
-              <Icon size={13} />
+              {glyph ? (
+                <span className="find-toggle-glyph" aria-hidden="true">
+                  {glyph}
+                </span>
+              ) : Icon ? (
+                <Icon size={13} />
+              ) : null}
             </button>
           ))}
         </div>
