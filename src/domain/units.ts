@@ -84,7 +84,6 @@ export const UNITS: Entry[] = [
   { en: "t", zh: "吨", aliases: ["tonne", "tonnes", "公吨"] },
   { en: "jin", zh: "斤" },
   { en: "dan", zh: "担", aliases: ["市担"] },
-  { en: "dan", zh: "担", aliases: ["市担"] },
   { en: "liang", zh: "两" },
   { en: "qian", zh: "钱", aliases: ["市钱"] },
   { en: "lb", zh: "磅", aliases: ["pound", "pounds", "lbs", "lbm"], imperial: true },
@@ -220,6 +219,14 @@ for (const entry of UNITS) {
     }
   }
 }
+
+// 格式化的中文写法优先级（1.6.1）：同单位有多种中文写法时，格式化把算式收敛到优先写法。
+// 千克/厘米是规范名（UNITS.zh，结果呈现同源），公斤/公分是常用别名；实时结果仍保留用户写法。
+// 左值 → 右值；其余中文别名（公尺、千米、焦耳…）不在此列，格式化不动它们。
+export const ZH_UNIT_PREFERENCE: Record<string, string> = {
+  公斤: "千克",
+  公分: "厘米",
+};
 
 // 大小写兼容：输入 `5 KM` `1500MG` `2 ML` 与小写等价，输出统一小写缩写。
 // 表：小写形式 → 规范写法（输出用小写，重解析经此表还原）。

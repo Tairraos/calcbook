@@ -9,6 +9,7 @@ import {
   TO_METRIC,
   type UnitSystemKind,
   unitKind,
+  ZH_UNIT_PREFERENCE,
   zhToCanonical,
 } from "./units.ts";
 
@@ -155,6 +156,13 @@ export function formatExpression(
   convert: ConvertQuantity,
 ): string {
   let tokens = tokenize(unifyMultiplication(expression));
+  // 中文写法优先级（1.6.1）：公斤→千克、公分→厘米。放在最前，
+  // 后续制式换算与风格改写都只见规范写法；注释不进这里，不会被改。
+  tokens = tokens.map((token) => {
+    if (token.kind !== "word") return token;
+    const preferred = ZH_UNIT_PREFERENCE[token.text];
+    return preferred ? { ...token, text: preferred } : token;
+  });
   const hasConversionWord = tokens.some(
     (token) => token.kind === "word" && isConversionWord(token.text),
   );

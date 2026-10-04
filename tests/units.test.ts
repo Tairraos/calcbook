@@ -106,6 +106,25 @@ test("按格式设置格式化整篇", () => {
   );
 });
 
+test("格式化把公斤/公分收敛到千克/厘米，注释与实时结果保留用户写法", () => {
+  assert.equal(
+    formatNoteBody("体重=70公斤\n桌宽=80公分", DEFAULT_FORMAT_SETTINGS, () => null),
+    "体重 = 70千克\n桌宽 = 80厘米",
+  );
+  // 公斤在注释里不参与计算，格式化不改注释
+  assert.equal(
+    formatNoteBody("体重=70公斤 # 公斤也认识", DEFAULT_FORMAT_SETTINGS, () => null),
+    "体重 = 70千克 # 公斤也认识",
+  );
+  // 千克/厘米本身写法不变；公斤/公分计算照常，实时结果保留用户写法
+  assert.equal(
+    formatNoteBody("重量=2千克\n长度=3厘米", DEFAULT_FORMAT_SETTINGS, () => null),
+    "重量 = 2千克\n长度 = 3厘米",
+  );
+  assert.deepEqual(display("70公斤"), ["70公斤"]);
+  assert.deepEqual(display("3公分"), ["3公分"]);
+});
+
 test("格式化统一乘号写法，保留除法写法", () => {
   // x 与 * 都排成 ×，不再把 x 当成单位吸附到数字上
   assert.equal(

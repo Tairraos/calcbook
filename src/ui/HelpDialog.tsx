@@ -67,12 +67,17 @@ const aggregateGroups: ReferenceGroup[] = [
   },
 ];
 
-// 保留字全表：单位（中英对照，来自单位登记表）+ 函数/常量/汇总/关键字。
+// 保留字全表：单位（中英对照，来自单位登记表；中文别名并入同一格——公斤是千克的别名，
+// 同样是保留字，必须可见）+ 函数/常量/汇总/关键字。
 const unitReservedRows: ReferenceGroup["rows"] = [];
+const chineseAliases = (entry: (typeof UNITS)[number]) =>
+  (entry.aliases ?? []).filter((alias) => /\p{Script=Han}/u.test(alias));
 for (let index = 0; index < UNITS.length; index += 4) {
   const chunk = UNITS.slice(index, index + 4);
   unitReservedRows.push([
-    chunk.map((entry) => `${entry.zh} → ${entry.en}`).join("；"),
+    chunk
+      .map((entry) => [entry.zh, ...chineseAliases(entry)].join(" / ") + ` → ${entry.en}`)
+      .join("；"),
     "单位",
     "-",
   ]);
@@ -127,7 +132,7 @@ const unitGroups: ReferenceGroup[] = [
     termLines: true,
     rows: [
       [
-        "公里 / 千米 → km；米 → m；厘米 → cm；毫米 / 微米 / 纳米 → mm / um / nm",
+        "公里 / 千米 → km；米 → m；厘米 / 公分 → cm；毫米 / 微米 / 纳米 → mm / um / nm",
         "长度",
         "1英里 + 1公里 → 2.6093 km",
       ],
