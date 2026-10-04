@@ -8,16 +8,35 @@ import {
   DEFAULT_HISTORY_LIMIT_KB,
   MAX_NOTE_LENGTH,
   parseWorkspace,
+  redirectRenamedId,
+  resolveRenamedId,
   SCRATCH_NOTE_BODY,
   SCRATCH_NOTE_ID,
 } from "../src/domain/notebook.ts";
+
+test("rename redirect terminates when a note is renamed back to a previous name", () => {
+  // A→B 后再改回 A：链式改写会写入 A→A 与 B→A，解析必须终止（此前是同步死循环，
+  // 冻结下一次自动保存与关闭保护）
+  const map = new Map<string, string>();
+  redirectRenamedId(map, "A.txt", "B.txt");
+  assert.equal(resolveRenamedId(map, "A.txt"), "B.txt");
+  redirectRenamedId(map, "B.txt", "A.txt");
+  assert.equal(resolveRenamedId(map, "A.txt"), "A.txt");
+  assert.equal(resolveRenamedId(map, "B.txt"), "A.txt");
+  // 改回后的名字再改名，链照常跟随
+  redirectRenamedId(map, "A.txt", "C.txt");
+  assert.equal(resolveRenamedId(map, "B.txt"), "C.txt");
+  // 未登记的名字原样返回
+  assert.equal(resolveRenamedId(map, "别的.txt"), "别的.txt");
+});
 
 test("scratch note never collides with real note ids and carries the intro line", () => {
   const scratch = createScratchNote(new Date().toISOString());
   assert.equal(scratch.id, SCRATCH_NOTE_ID);
   assert.equal(scratch.title, "随手算");
   assert.equal(scratch.body, SCRATCH_NOTE_BODY);
-  assert.equal(scratch.body, "# 随手算笔记不会保存，app 退出即消失");
+  // 提示行 + 结尾换行生成的空行：打开时光标定位在这行上
+  assert.equal(scratch.body, "# 随手算笔记不会保存，app 退出即消失\n");
   assert.equal(scratch.trashed, false);
   // 真实笔记 id 来自文件名主干，slugify 会把「/」换成「-」，因此含「/」的 scratch id
   // 不可能撞上任何真实笔记；它也永远不进 parseWorkspace 的持久化往返。

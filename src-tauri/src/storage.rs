@@ -700,6 +700,16 @@ pub fn record_history(
     enforce_history_cap(&dir, limit_bytes)
 }
 
+/// 历史文件名的时间排序键：旧版 13 字符整点名补齐 `-00-00` 到秒级，混合命名时
+/// 字典序才等于时间序——否则 `…-14.txt` 会排在 `…-14-30-21.txt` 之后被当成最新。
+fn history_sort_key(stem: &str) -> String {
+    if stem.len() == 13 && hour_prefix(stem).is_some() {
+        format!("{stem}-00-00")
+    } else {
+        stem.to_string()
+    }
+}
+
 /// 整理历史：当前小时之外，每小时多于一份时只保留最后一份，并改名为整点
 /// （`年-月-日-时-00-00`）。兼容旧版 13 字符整点文件名；不合时间格式的文件不动。
 fn compact_history(dir: &Path, current_hour: &str) -> Result<(), String> {
@@ -719,7 +729,10 @@ fn compact_history(dir: &Path, current_hour: &str) -> Result<(), String> {
         if hour == current_hour || names.len() <= 1 {
             continue;
         }
-        names.sort();
+        names.sort_by(|a, b| {
+            history_sort_key(a.trim_end_matches(".txt"))
+                .cmp(&history_sort_key(b.trim_end_matches(".txt")))
+        });
         let keep = names.pop().expect("该小时至少有两份历史");
         for name in &names {
             fs::remove_file(dir.join(name))
@@ -751,9 +764,12 @@ fn enforce_history_cap(dir: &Path, limit_bytes: u64) -> Result<(), String> {
     if total <= limit_bytes {
         return Ok(());
     }
-    // 时间桶名字典序即时间序；逐个删除最早的。最新一份不参与淘汰：
+    // 补齐后的时间键字典序即时间序（见 history_sort_key）；逐个删除最早的。最新一份不参与淘汰：
     // 单篇快照本身可能超过上限（超大笔记），删到只剩它为止，历史不至于全空。
-    entries.sort_by(|a, b| a.0.cmp(&b.0));
+    entries.sort_by(|a, b| {
+        history_sort_key(a.0.trim_end_matches(".txt"))
+            .cmp(&history_sort_key(b.0.trim_end_matches(".txt")))
+    });
     entries.pop();
     for (name, size) in entries {
         if total <= limit_bytes {
@@ -1001,6 +1017,8 @@ pub struct WindowSize {
 /// 与 tauri.conf.json 的 minWidth/minHeight 保持一致。
 pub const MIN_WINDOW_WIDTH: f64 = 800.0;
 pub const MIN_WINDOW_HEIGHT: f64 = 640.0;
+/// 恢复尺寸的合理性上限：解析出的天文数字（1e300 等）不用于恢复窗口。
+const MAX_WINDOW_EDGE: f64 = 32768.0;
 
 impl WindowSize {
     /// 钳制到主窗最小尺寸，恢复时不会比最小窗口还小。
@@ -1010,19 +1028,27 @@ impl WindowSize {
             height: self.height.max(MIN_WINDOW_HEIGHT),
         }
     }
+
+    /// 恢复前的合理性校验：非有限数或超出常规屏幕范围的尺寸视为无记录。
+    pub fn plausible(self) -> bool {
+        self.width.is_finite()
+            && self.height.is_finite()
+            && self.width <= MAX_WINDOW_EDGE
+            && self.height <= MAX_WINDOW_EDGE
+    }
 }
 
 impl Store {
     /// 读取上次记录的窗口尺寸：优先取配置目录 settings.json 的 window 字段；
-    /// 没有则兼容读取 1.4.6 及以前留在默认数据目录的 window.json。都缺失或损坏时
-    /// 返回 None（回退最小尺寸，不阻塞启动）。
+    /// 没有则兼容读取 1.4.6 及以前留在默认数据目录的 window.json。都缺失、损坏或
+    /// 不合理时返回 None（回退最小尺寸，不阻塞启动）。
     pub fn window_size(&self) -> Option<WindowSize> {
         if let Some(window) = self.settings().ok()?.window {
-            return Some(window);
+            return window.plausible().then_some(window);
         }
         let bytes = fs::read(self.default.join("window.json")).ok()?;
         let size: WindowSize = serde_json::from_slice(&bytes).ok()?;
-        (size.width.is_finite() && size.height.is_finite()).then_some(size)
+        size.plausible().then_some(size)
     }
 
     /// 记录窗口尺寸：先钳制到最小尺寸，再与 dataDirectory 一起原子写回 settings.json；
@@ -1104,7 +1130,9 @@ impl Store {
                 .unwrap_or(false);
             if has_legacy {
                 let payload = scan(legacy)?;
-                // 旧目录的文件全部搬进当前数据目录（recycled/ 结构原样保留）
+                // 旧目录的文件复制进当前数据目录（recycled/ 结构原样保留）；
+                // 旧目录整体保留——降级回旧版本仍能读到原数据。重迁移不会发生：
+                // 复制后本目录即非空（has_own 判定），此后 workspace.json 常驻。
                 for note in &payload.notes {
                     let source = legacy.join(&note.id);
                     let target = directory.join(&note.id);
@@ -1112,19 +1140,17 @@ impl Store {
                         fs::create_dir_all(parent)
                             .map_err(|error| format!("无法创建笔记目录：{error}"))?;
                     }
-                    fs::rename(&source, &target)
-                        .or_else(|_| fs::copy(&source, &target).map(|_| ()))
+                    fs::copy(&source, &target)
                         .map_err(|error| format!("无法迁移旧笔记：{error}"))?;
                 }
-                let _ = fs::remove_file(legacy.join(WORKSPACE_FILE));
                 return Ok(Some(scan(directory)?));
             }
         }
         Ok(None)
     }
 
-    /// 换目录：目标文件夹必须是空的（没有 .txt 与 workspace.json），否则拒绝覆盖；
-    /// 把全部笔记文件、recycled/ 与 workspace.json 复制过去后再提交配置。
+    /// 换目录：目标文件夹必须是空的（没有 .txt、workspace.json、recycled/ 或 history/），
+    /// 否则拒绝覆盖；把全部笔记文件、recycled/ 与 workspace.json 复制过去后再提交配置。
     pub fn relocate(&self, target: &Path) -> Result<(), String> {
         let target =
             fs::canonicalize(target).map_err(|error| format!("无法打开所选目录：{error}"))?;
@@ -1140,7 +1166,12 @@ impl Store {
             .flatten()
             .any(|entry| {
                 let name = entry.file_name().to_string_lossy().to_string();
-                name.ends_with(".txt") || name == WORKSPACE_FILE
+                // recycled/ 与 history/ 也算占用：只含废纸篓或历史的旧工作区目录
+                // 顶层虽干净，复制仍会覆盖其中的同名文件（不覆盖另一份工作区）
+                name.ends_with(".txt")
+                    || name == WORKSPACE_FILE
+                    || name == RECYCLED_DIR
+                    || name == HISTORY_DIR
             });
         if occupied {
             return Err("所选文件夹已包含笔记，未覆盖。请选择空文件夹".into());
@@ -1259,9 +1290,72 @@ mod tests {
                 height: MIN_WINDOW_HEIGHT,
             })
         );
+        // settings 路径的窗口尺寸同样做合理性校验（1e300 是有限数但显然不是窗口尺寸）
+        fs::write(
+            store.config.join("settings.json"),
+            r#"{"window":{"width":1e300,"height":640}}"#,
+        )
+        .unwrap();
+        assert_eq!(store.window_size(), None);
         // 损坏的 settings.json 视为无记录，不阻塞启动
         fs::write(store.config.join("settings.json"), "not json").unwrap();
         assert_eq!(store.window_size(), None);
+    }
+
+    #[test]
+    fn legacy_directory_migration_copies_and_keeps_old_files() {
+        let root = temporary("legacy-dir");
+        let store = Store {
+            config: root.join("config"),
+            default: root.join("data"),
+            legacy: Some(root.join("legacy")),
+        };
+        fs::create_dir_all(&store.default).unwrap();
+        let legacy = store.legacy.as_ref().unwrap();
+        fs::create_dir_all(legacy.join(RECYCLED_DIR)).unwrap();
+        fs::write(legacy.join("旧笔记.txt"), "# 旧\n1 + 1").unwrap();
+        fs::write(legacy.join(RECYCLED_DIR).join("废.txt"), "# 废").unwrap();
+        fs::write(
+            legacy.join(WORKSPACE_FILE),
+            br#"{"version":1,"theme":"dark"}"#,
+        )
+        .unwrap();
+
+        let payload = store.load().unwrap().expect("迁移后应有工作区");
+        let ids: Vec<&str> = payload.notes.iter().map(|note| note.id.as_str()).collect();
+        assert_eq!(ids, ["旧笔记.txt", "recycled/废.txt"]);
+        assert!(store.default.join("旧笔记.txt").exists());
+        assert!(store.default.join(RECYCLED_DIR).join("废.txt").exists());
+        // 旧目录整体保留：降级回旧版本仍能读到原数据（复制而非搬移）
+        assert!(legacy.join("旧笔记.txt").exists());
+        assert!(legacy.join(RECYCLED_DIR).join("废.txt").exists());
+        assert!(legacy.join(WORKSPACE_FILE).exists());
+        // 再次加载不再触发迁移，结果一致
+        let again = store.load().unwrap().expect("二次加载仍应有工作区");
+        assert_eq!(again.notes.len(), 2);
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn compact_history_keeps_the_newest_snapshot_when_legacy_hour_names_mix_in() {
+        let directory = temporary("compact-mixed");
+        let dir = directory.join(HISTORY_DIR).join("笔记");
+        fs::create_dir_all(&dir).unwrap();
+        // 旧版 13 字符整点名与秒级快照同小时混合：整点名（更旧）不得被字典序判成最新，
+        // 否则较新的秒级快照会被误删
+        fs::write(dir.join("2026-10-05-14.txt"), "旧整点").unwrap();
+        fs::write(dir.join("2026-10-05-14-30-21.txt"), "较新快照").unwrap();
+        fs::write(dir.join("2026-10-05-14-45-00.txt"), "最新快照").unwrap();
+        compact_history(&dir, "2026-10-05-15").unwrap();
+        // 只保留时间上最新的那份并归档为整点名
+        assert_eq!(
+            fs::read_to_string(dir.join("2026-10-05-14-00-00.txt")).unwrap(),
+            "最新快照"
+        );
+        assert!(!dir.join("2026-10-05-14.txt").exists());
+        assert!(!dir.join("2026-10-05-14-30-21.txt").exists());
+        assert!(!dir.join("2026-10-05-14-45-00.txt").exists());
+        fs::remove_dir_all(directory).unwrap();
     }
 
     fn temporary(name: &str) -> PathBuf {

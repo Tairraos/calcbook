@@ -2034,6 +2034,10 @@ kbd {
   width: 24px;
   height: 24px;
 }
+/* 失败/超限提示（is-alert）：错误色底替换墨色底，图标换成警示形，不与成功提示混淆 */
+.toast.is-alert {
+  background: var(--error);
+}
 .visually-hidden {
   position: absolute;
   width: 1px;

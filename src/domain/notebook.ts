@@ -57,10 +57,26 @@ export function createNote(id: string, now: string, title = "未命名笔记", b
 
 // 随手算：内存中的临时算稿，只存在于 App 状态里，绝不进入工作区与持久化层。
 // id 含「/」——文件名主干不允许出现斜杠（parseWorkspace 拒绝），不可能与真实笔记撞 id。
+// 正文是提示行加一个空行（结尾换行即空行）：打开时光标落在空行上，直接开写。
 export const SCRATCH_NOTE_ID = "scratch/随手算";
-export const SCRATCH_NOTE_BODY = "# 随手算笔记不会保存，app 退出即消失";
+export const SCRATCH_NOTE_BODY = "# 随手算笔记不会保存，app 退出即消失\n";
 export function createScratchNote(now: string): Note {
   return createNote(SCRATCH_NOTE_ID, now, "随手算", SCRATCH_NOTE_BODY);
+}
+
+// 改名重定向（桌面版）：改名后旧 id 的排队保存/历史操作落到新文件。
+// 改回旧名会让映射出现自环（A→B 后 B→A 得 A→A）：环上的名字就是最终名，解析到环即停。
+export function redirectRenamedId(map: Map<string, string>, from: string, to: string): void {
+  for (const [key, value] of map) if (value === from) map.set(key, to);
+  map.set(from, to);
+}
+
+export function resolveRenamedId(map: Map<string, string>, id: string): string {
+  let current = id;
+  // 步数上限即环防线：无环链的跳数不可能超过映射条目数
+  for (let steps = 0; map.has(current) && steps <= map.size; steps++)
+    current = map.get(current) as string;
+  return current;
 }
 
 export const EXAMPLES = [

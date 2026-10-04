@@ -6,6 +6,8 @@ import {
   type HistoryEntry,
   type Note,
   parseWorkspace,
+  redirectRenamedId,
+  resolveRenamedId,
   type Workspace,
 } from "../domain/notebook.ts";
 
@@ -45,7 +47,7 @@ export async function revealNoteFile(noteId: string): Promise<void> {
   await invoke("reveal_note", { noteId: resolveNoteId(noteId) });
 }
 
-// 记住主窗尺寸：桌面版存默认数据目录 ~/.calcbook/window.json（逻辑单位）。
+// 记住主窗尺寸：桌面版存配置目录 settings.json 的 window 字段（逻辑单位）。
 export async function saveWindowSize(width: number, height: number): Promise<void> {
   if (!isTauri()) return;
   await invoke("save_window_size", { width, height });
@@ -92,9 +94,7 @@ let noteSnapshot: Map<string, { body: string; trashed: boolean }> = new Map();
 const renamedIds = new Map<string, string>();
 
 function resolveNoteId(noteId: string): string {
-  let id = noteId;
-  while (renamedIds.has(id)) id = renamedIds.get(id) as string;
-  return id;
+  return resolveRenamedId(renamedIds, noteId);
 }
 
 export async function loadWorkspace(): Promise<Workspace | null> {
@@ -214,10 +214,7 @@ export async function renameNoteFile(
     noteId: from,
     title,
   });
-  if (result.id !== from) {
-    for (const [key, value] of renamedIds) if (value === from) renamedIds.set(key, result.id);
-    renamedIds.set(from, result.id);
-  }
+  if (result.id !== from) redirectRenamedId(renamedIds, from, result.id);
   const entry = noteSnapshot.get(from);
   if (entry) {
     noteSnapshot.delete(from);
@@ -227,7 +224,8 @@ export async function renameNoteFile(
 }
 
 // 浏览器预览的历史走 localStorage（桌面版走数据目录 history/ 下按笔记名分目录），
-// 让历史功能在预览态也能验收。桌面版的每小时一桶与 1MB 上限由 Rust 保证。
+// 让历史功能在预览态也能验收。桌面版的每小时整点归档与单篇 KB 上限（设置里可配，
+// 默认 128）由 Rust 保证。
 const PREVIEW_HISTORY_KEY = "calcbook.history.v1";
 
 function readPreviewHistory(): Record<string, Record<string, string>> {

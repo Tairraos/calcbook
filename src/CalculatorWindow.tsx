@@ -102,6 +102,8 @@ export function CalculatorWindow() {
   const [state, setState] = useState<KeypadState>(initialKeypad);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [pressedKey, setPressedKey] = useState<string | null>(null);
+  // 按压态对应的物理键 code，keyup 按 code 配对清除（Shift 组合键松开顺序不影响）
+  const pressedCodeRef = useRef<string | null>(null);
   const answerRef = useRef<HTMLOutputElement>(null);
   const answerTextRef = useRef<HTMLSpanElement>(null);
   const outcome = state.expression ? calculateInput(state.expression) : null;
@@ -161,6 +163,8 @@ export function CalculatorWindow() {
       const key = keyboardKeys[event.key];
       if (key) {
         event.preventDefault();
+        // 按压态配对记物理键 code：Shift 先松开时 event.key 会变（Shift+8 的 * 松开成 8），code 不变
+        pressedCodeRef.current = event.code;
         setPressedKey(key);
         if (!event.repeat) playKeyClick();
         setState((before) => pressKeypad(before, key));
@@ -169,10 +173,15 @@ export function CalculatorWindow() {
       }
     };
     const onKeyUp = (event: KeyboardEvent) => {
-      const key = keyboardKeys[event.key];
-      if (key) setPressedKey((current) => (current === key ? null : current));
+      if (event.code === pressedCodeRef.current) {
+        pressedCodeRef.current = null;
+        setPressedKey(null);
+      }
     };
-    const onBlur = () => setPressedKey(null);
+    const onBlur = () => {
+      pressedCodeRef.current = null;
+      setPressedKey(null);
+    };
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", onBlur);

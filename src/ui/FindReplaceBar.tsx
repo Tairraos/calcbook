@@ -94,6 +94,12 @@ export function FindReplaceBar({
       onClose();
     }
   }
+  // 焦点在开关/导航/关闭按钮上时 Esc 也要关闭：输入框的 Esc 已被各自的
+  // onKeyDown preventDefault，这里只接住其余目标（按钮）上的按键
+  function handleBarKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    if (event.key !== "Escape" || isComposing(event) || event.defaultPrevented) return;
+    onClose();
+  }
   const hasMatches = matchCount > 0;
   const countLabel = error
     ? "正则错误"
@@ -103,7 +109,7 @@ export function FindReplaceBar({
         ? `${activeIndex + 1}/${matchCount}`
         : "无结果";
   return (
-    <div className="find-bar" role="dialog" aria-label="查找替换">
+    <div className="find-bar" role="dialog" aria-label="查找替换" onKeyDown={handleBarKeyDown}>
       <div className="find-row">
         {canReplace ? (
           <IconButton

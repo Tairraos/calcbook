@@ -25,7 +25,7 @@ fn ensure_calculator<R: Runtime>(app: &AppHandle<R>) -> Result<WebviewWindow<R>,
     .minimizable(true)
     // 不允许最大化：macOS 上同时禁掉绿点的 zoom 与双击标题栏放大。
     .maximizable(false)
-    // 宽高固定：窄态 300×540，展开最近计算后由前端切到 500×540，用户不能手动 resize。
+    // 宽高固定：窄态 300×500，展开最近计算后由前端切到 600×500，用户不能手动 resize。
     .resizable(false)
     // tauri 默认建窗即显示：若不显式隐藏，toggle 里 is_visible() 为 true 会把
     // 刚建好的窗口立即收起——表现为「启动后要点两下才出计算器」。先隐藏，

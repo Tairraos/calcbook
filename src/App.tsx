@@ -6,6 +6,7 @@ import {
   CalendarClock,
   Check,
   ChevronRight,
+  CircleAlert,
   CircleHelp,
   FileText,
   FolderOpen,
@@ -134,7 +135,14 @@ export default function App() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [activeLine, setActiveLine] = useState(0);
-  const [notice, setNotice] = useState("");
+  const [notice, setNoticeState] = useState("");
+  // 失败/超限类提示用警示图标渲染，不与成功提示共用 ✓ 样式（出错不能被成功样式掩盖）。
+  // 所有提示统一走 notify：每次设置都重置警示位，上一次的警示样式不污染下一次成功提示。
+  const [noticeAlert, setNoticeAlert] = useState(false);
+  const notify = useCallback((text: string, alert = false) => {
+    setNoticeAlert(alert);
+    setNoticeState(text);
+  }, []);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const activeLineRef = useRef(0);
@@ -271,7 +279,7 @@ export default function App() {
       selected.body.length - (match.end - match.start) + findReplacement.length >
       MAX_NOTE_LENGTH
     ) {
-      setNotice("替换后将超过笔记长度上限，未执行。");
+      notify("替换后将超过笔记长度上限，未执行。", true);
       return;
     }
     textarea.focus();
@@ -305,7 +313,7 @@ export default function App() {
     );
     if (count === 0) return;
     if (text.length > MAX_NOTE_LENGTH) {
-      setNotice("替换后将超过笔记长度上限，未执行。");
+      notify("替换后将超过笔记长度上限，未执行。", true);
       return;
     }
     void recordNoteHistory(selected.id, selected.body);
@@ -318,7 +326,7 @@ export default function App() {
           // 两套同时存在时，第一次 Cmd+Z 走状态恢复、第二次又回放原生条目，
           // 按旧坐标删插会把原文复制一份（实测 bug）。
           formatUndoRef.current = null;
-          setNotice(`已替换 ${count} 处`);
+          notify(`已替换 ${count} 处`);
           findReplaceRef.current?.focus();
           return;
         }
@@ -329,7 +337,7 @@ export default function App() {
     // 回退路径：React 状态替换无原生撤销条目，用 formatUndoRef 应用内撤销兜底
     formatUndoRef.current = { noteId: selected.id, previous: selected.body, formatted: text };
     patchNote({ body: text });
-    setNotice(`已替换 ${count} 处`);
+    notify(`已替换 ${count} 处`);
   }
 
   useEffect(() => {
@@ -388,14 +396,14 @@ export default function App() {
 
   useEffect(() => {
     if (!notice) return;
-    const timer = setTimeout(() => setNotice(""), 3000);
+    const timer = setTimeout(() => notify(""), 3000);
     return () => clearTimeout(timer);
-  }, [notice]);
+  }, [notice, notify]);
 
   const newNote = useCallback(
     async (title = "未命名笔记", body = ""): Promise<boolean> => {
       if ((workspace?.notes.length ?? 0) >= MAX_NOTES) {
-        setNotice("目前最多保留 100 篇笔记（含废纸篓）。");
+        notify("目前最多保留 100 篇笔记（含废纸篓）。", true);
         return false;
       }
       if (isDesktopApp) {
@@ -407,7 +415,7 @@ export default function App() {
             activeId: created.id,
           }));
         } catch {
-          setNotice("新建笔记失败，请重试。");
+          notify("新建笔记失败，请重试。", true);
           return false;
         }
       } else {
@@ -421,22 +429,50 @@ export default function App() {
       requestAnimationFrame(() => editorRef.current?.focus());
       return true;
     },
-    [workspace?.notes.length, resetActiveLine, update],
+    [workspace?.notes.length, resetActiveLine, update, notify],
   );
 
-  // 随手算只经顶栏按钮打开：内存里已有内容就原样恢复，没有才新建一行提示语。
+  // 焦点到编辑器并把光标放在文末：随手算的正文以空行结尾，文末即提示行下的空行，直接开写。
+  const focusEditorAtEnd = useCallback(() => {
+    requestAnimationFrame(() => {
+      const textarea = editorRef.current;
+      if (!textarea) return;
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    });
+  }, []);
+
+  // 随手算只经顶栏按钮打开：内存里已有内容就原样恢复，没有才新建提示行加空行。
   // 打开即把 activeId 置空并持久化——「上次视图 = 随手算」，重开 app 时据此恢复为新随手算。
   const openScratch = useCallback(() => {
     setScratchNote((before) => before ?? createScratchNote(new Date().toISOString()));
     setScratchOpen(true);
     update((before) => ({ ...before, activeId: null }));
     resetActiveLine();
-    requestAnimationFrame(() => editorRef.current?.focus());
+    focusEditorAtEnd();
+  }, [resetActiveLine, update, focusEditorAtEnd]);
+
+  // 回到「我的笔记」：随手算打开时点「我的笔记」tab 也离开（1.6.4 起，含高亮熄灭）；
+  // activeId 无效（随手算/废纸篓/悬空）时落回第一篇可用笔记，让「上次视图 = 我的笔记」有据可依。
+  const returnToNotes = useCallback(() => {
+    setTrashView(false);
+    setQuery("");
+    setScratchOpen(false);
+    resetActiveLine();
+    update((before) => {
+      const current = before.notes.find((note) => note.id === before.activeId && !note.trashed);
+      if (current) return before;
+      return {
+        ...before,
+        activeId: before.notes.find((note) => !note.trashed)?.id ?? null,
+      };
+    });
   }, [resetActiveLine, update]);
 
   // 启动恢复视图：activeId 无效——上次在随手算或废纸篓（null/空）、上次笔记已不存在、
-  // 或首次打开——就打开一篇新的随手算（内存内容不跨进程，新的即初始一行提示）。
-  // 判定不回写 activeId：幂等，下次启动同样成立；用户点开哪篇笔记由后续操作持久化。
+  // 或首次打开——就打开一篇新的随手算（内存内容不跨进程，新的即提示行加空行），
+  // 光标同样落在空行上。判定不回写 activeId：幂等，下次启动同样成立；
+  // 用户点开哪篇笔记由后续操作持久化。
   const bootedRef = useRef(false);
   useLayoutEffect(() => {
     if (!workspace || bootedRef.current) return;
@@ -445,8 +481,9 @@ export default function App() {
     if (!active || active.trashed) {
       setScratchNote((before) => before ?? createScratchNote(new Date().toISOString()));
       setScratchOpen(true);
+      focusEditorAtEnd();
     }
-  }, [workspace]);
+  }, [workspace, focusEditorAtEnd]);
 
   function patchNote(patch: Pick<Note, "body">) {
     if (!selected) return;
@@ -499,7 +536,7 @@ export default function App() {
     }));
     setTrashView(false);
     resetActiveLine();
-    setNotice("笔记已恢复");
+    notify("笔记已恢复");
   }
 
   // 编辑历史：文件名是秒级时间戳（`年-月-日-时-分-秒.txt`），同小时可有多份；
@@ -525,10 +562,10 @@ export default function App() {
         localTimestamp(),
         (workspace?.historyLimitKB ?? DEFAULT_HISTORY_LIMIT_KB) * 1024,
       ).catch(() => {
-        setNotice("历史记录失败，请稍后重试。");
+        notify("历史记录失败，请稍后重试。", true);
       });
     },
-    [workspace],
+    [workspace, notify],
   );
   // 切换笔记：先给旧笔记留档，再给新笔记建立基线（无基线时以加载内容为基线）。
   useEffect(() => {
@@ -577,9 +614,9 @@ export default function App() {
         ),
       }));
       refreshHistory();
-      setNotice(`已恢复到 ${historyLabel(entry.name)}`);
+      notify(`已恢复到 ${historyLabel(entry.name)}`);
     },
-    [selected, recordNoteHistory, update, refreshHistory],
+    [selected, recordNoteHistory, update, refreshHistory, notify],
   );
   // 打开历史弹窗时加载当前笔记的历史列表（UI 组件不直接读存储层）。
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[] | null>(null);
@@ -605,14 +642,17 @@ export default function App() {
     };
   }, [historyOpen, activeNoteId]);
 
-  const copy = useCallback(async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text);
-      setNotice("结果已复制");
-    } catch {
-      setNotice("复制失败，请选中结果后手动复制。");
-    }
-  }, []);
+  const copy = useCallback(
+    async (text: string) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        notify("结果已复制");
+      } catch {
+        notify("复制失败，请选中结果后手动复制。", true);
+      }
+    },
+    [notify],
+  );
 
   function insertExpression(expression: string) {
     if (!selected || selected.trashed) {
@@ -627,7 +667,7 @@ export default function App() {
     const insertion = `${before && !before.endsWith("\n") ? "\n" : ""}${expression.trim()}\n`;
     const body = before + insertion + selected.body.slice(insertionPoint).replace(/^\n/, "");
     if (body.length > MAX_NOTE_LENGTH) {
-      setNotice("这篇笔记已达到长度上限，请新建一篇。");
+      notify("这篇笔记已达到长度上限，请新建一篇。", true);
       return;
     }
     patchNote({ body });
@@ -638,7 +678,7 @@ export default function App() {
         insertionPoint + insertion.length,
       );
     });
-    setNotice("算式已写入笔记");
+    notify("算式已写入笔记");
   }
 
   const handleActiveLine = useCallback((line: number) => {
@@ -675,7 +715,7 @@ export default function App() {
     if (!selected || !workspace) return;
     const formatted = formatNoteBody(selected.body, workspace.format, convertUnitQuantity);
     if (formatted === selected.body) {
-      setNotice("格式已是最新的。");
+      notify("格式已是最新的。");
       return;
     }
     const isScratch = selected.id === SCRATCH_NOTE_ID;
@@ -690,7 +730,7 @@ export default function App() {
           // execCommand 成功：原生撤销栈接管（一次 Cmd+Z 还原），
           // 不能再挂应用内撤销，否则连续 Cmd+Z 双轨回放会重复正文
           formatUndoRef.current = null;
-          setNotice("已按格式设置整理本页算式");
+          notify("已按格式设置整理本页算式");
           return;
         }
       } catch {
@@ -714,30 +754,51 @@ export default function App() {
         ),
       }));
     }
-    setNotice("已按格式设置整理本页算式");
-  }, [selected, workspace, update, recordNoteHistory]);
+    notify("已按格式设置整理本页算式");
+  }, [selected, workspace, update, recordNoteHistory, notify]);
 
   // 右键菜单：定位（Finder）/导出/删除到废纸篓
   const closeNoteMenu = useCallback(() => setNoteMenu(null), []);
-  const revealNote = useCallback(async (noteId: string) => {
-    try {
-      await revealNoteFile(noteId);
-    } catch (reason) {
-      setNotice(reason instanceof Error ? reason.message : String(reason));
-    }
-  }, []);
+  // 菜单开着时，点击菜单外的任何位置或按 Escape 都关闭（菜单项的 pointerdown 在菜单内，不受影响）。
+  const noteMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!noteMenu) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && noteMenuRef.current?.contains(event.target)) return;
+      setNoteMenu(null);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !event.isComposing) setNoteMenu(null);
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [noteMenu]);
+  const revealNote = useCallback(
+    async (noteId: string) => {
+      try {
+        await revealNoteFile(noteId);
+      } catch (reason) {
+        notify(reason instanceof Error ? reason.message : String(reason), true);
+      }
+    },
+    [notify],
+  );
   const exportNoteById = useCallback(
     async (noteId: string, title: string) => {
       const note = workspace?.notes.find((item) => item.id === noteId);
       if (!note) return;
       try {
         if (await downloadText(`${title || "未命名笔记"}.txt`, serializeNoteBody(note.body)))
-          setNotice("已导出文本笔记（含结果）");
+          notify("已导出文本笔记（含结果）");
       } catch {
-        setNotice("导出失败，请重试。");
+        notify("导出失败，请重试。", true);
       }
     },
-    [workspace],
+    [workspace, notify],
   );
   const trashNote = useCallback(
     (noteId: string) => {
@@ -750,9 +811,9 @@ export default function App() {
         ),
         activeId: before.activeId === noteId ? null : before.activeId,
       }));
-      setNotice("已移到废纸篓");
+      notify("已移到废纸篓");
     },
-    [update],
+    [update, notify],
   );
   // 永久删除：从工作区移除；Rust 保存时按新旧元数据差异物理删除对应 .txt 文件。
   const permanentDelete = useCallback(
@@ -763,9 +824,9 @@ export default function App() {
         notes: before.notes.filter((note) => !idSet.has(note.id)),
         activeId: before.activeId && idSet.has(before.activeId) ? null : before.activeId,
       }));
-      setNotice(noteIds.length === 1 ? "笔记已永久删除" : `已永久删除 ${noteIds.length} 篇笔记`);
+      notify(noteIds.length === 1 ? "笔记已永久删除" : `已永久删除 ${noteIds.length} 篇笔记`);
     },
-    [update],
+    [update, notify],
   );
 
   // 计算器子窗口状态：初始查询一次，之后由 Rust 在显示/隐藏时推送。
@@ -860,7 +921,7 @@ export default function App() {
             ),
           }));
         }
-        setNotice("已撤销格式化");
+        notify("已撤销格式化");
         return;
       }
       if (event.key === ",") {
@@ -907,6 +968,7 @@ export default function App() {
     selected?.body,
     selected?.id,
     openFind,
+    notify,
   ]);
 
   if (!workspace)
@@ -959,35 +1021,19 @@ export default function App() {
             <div className="notebook-tabs">
               <button
                 type="button"
-                className={trashView ? "" : "is-active"}
-                aria-pressed={!trashView}
+                className={trashView || scratchOpen ? "" : "is-active"}
+                aria-pressed={!trashView && !scratchOpen}
                 onClick={() => {
-                  if (trashView) {
-                    setTrashView(false);
-                    setQuery("");
-                    setScratchOpen(false);
-                    resetActiveLine();
-                    // activeId 无效（随手算/废纸篓/悬空）时落回第一篇可用笔记，
-                    // 让「上次视图 = 我的笔记」重新有据可依
-                    update((before) => {
-                      const current = before.notes.find(
-                        (note) => note.id === before.activeId && !note.trashed,
-                      );
-                      if (current) return before;
-                      return {
-                        ...before,
-                        activeId: before.notes.find((note) => !note.trashed)?.id ?? null,
-                      };
-                    });
-                  }
+                  // 随手算打开时点当前 tab 也离开（ui.md：切 tab 都会离开随手算）
+                  if (trashView || scratchOpen) returnToNotes();
                 }}
               >
                 我的笔记
               </button>
               <button
                 type="button"
-                className={trashView ? "is-active" : ""}
-                aria-pressed={trashView}
+                className={trashView && !scratchOpen ? "is-active" : ""}
+                aria-pressed={trashView && !scratchOpen}
                 onClick={() => {
                   if (!trashView) {
                     setTrashView(true);
@@ -996,6 +1042,10 @@ export default function App() {
                     resetActiveLine();
                     // 废纸篓视图不属于「我的笔记」：清掉 activeId，重开 app 时落在随手算
                     update((before) => ({ ...before, activeId: null }));
+                  } else if (scratchOpen) {
+                    // 从废纸篓打开的随手算盖在废纸篓视图上：点当前 tab 关掉随手算回到列表
+                    setScratchOpen(false);
+                    resetActiveLine();
                   }
                 }}
               >
@@ -1133,12 +1183,12 @@ export default function App() {
               title={calculatorVisible ? "计算器窗口已打开" : "打开计算器窗口"}
               onClick={() => {
                 if (!isDesktopApp) {
-                  setNotice("计算器窗口仅在桌面版可用。");
+                  notify("计算器窗口仅在桌面版可用。", true);
                   return;
                 }
                 void toggleCalculator()
                   .then((status) => setCalculatorVisible(status.visible))
-                  .catch(() => setNotice("无法打开计算器窗口，请重试。"));
+                  .catch(() => notify("无法打开计算器窗口，请重试。", true));
               }}
             >
               <CalculatorIcon size={16} />
@@ -1345,6 +1395,7 @@ export default function App() {
       {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} onInsert={insertExpression} />}
       {noteMenu && (
         <div
+          ref={noteMenuRef}
           className="context-menu"
           role="menu"
           aria-label="笔记操作"
@@ -1429,7 +1480,7 @@ export default function App() {
                     activeId:
                       before.notes.find((note) => !note.trashed && note.id !== id)?.id ?? null,
                   }));
-                  setNotice("已移到废纸篓，可随时恢复");
+                  notify("已移到废纸篓，可随时恢复");
                 } else {
                   permanentDelete(
                     confirmDelete.mode === "all"
@@ -1472,20 +1523,20 @@ export default function App() {
           onDelete={(entry) =>
             deleteHistoryFile(selected.id, entry.name)
               .then(() => {
-                setNotice(`已删除 ${historyLabel(entry.name)} 的历史`);
+                notify(`已删除 ${historyLabel(entry.name)} 的历史`);
                 void listHistory(selected.id, localHourPrefix())
                   .then((list) => setHistoryEntries(list))
                   .catch(() => setHistoryEntries([]));
               })
-              .catch(() => setNotice("删除历史失败，请稍后重试。"))
+              .catch(() => notify("删除历史失败，请稍后重试。", true))
           }
         />
       )}
       {notice && (
-        <div className="toast" role="status">
-          <Check size={15} />
+        <div className={`toast ${noticeAlert ? "is-alert" : ""}`} role="status">
+          {noticeAlert ? <CircleAlert size={15} /> : <Check size={15} />}
           <span>{notice}</span>
-          <IconButton title="关闭提示" onClick={() => setNotice("")}>
+          <IconButton title="关闭提示" onClick={() => notify("")}>
             <X size={14} />
           </IconButton>
         </div>
