@@ -1,6 +1,8 @@
 // 计算器独立窗口的内容：?view=calculator 时由 main.tsx 渲染。
 // 窗口「关闭」在 Rust 侧转为隐藏（webview 常驻），算式与历史因此天然保留；
 // app 退出即进程结束，下次打开是全新状态。
+// 窗口有焦点时键盘整体接管：所有按键都输入算式，不认识的键一律忽略；
+// 算式框不可聚焦（无光标进入即无输入法），窗口内不可能进入中文输入。
 
 import { emit, listen } from "@tauri-apps/api/event";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
@@ -21,6 +23,7 @@ import {
   WIDE_SIZE,
 } from "./platform/storage.ts";
 import { IconButton } from "./ui/IconButton.tsx";
+import { playKeyClick } from "./ui/keySound.ts";
 
 const keys = [
   "AC",
@@ -61,10 +64,44 @@ const keyLabels: Record<string, string> = {
   ".": "小数点",
 };
 
+// 物理键 → 按键：回车是等于，C 是清空，x 与 * 都是乘号，/ 与 \ 都是除号（显示为 × ÷）。
+// 表外的键一律忽略；Cmd/Ctrl/Alt 组合键在处理器里先行放行，不属于本表职责。
+const keyboardKeys: Record<string, string> = {
+  Enter: "=",
+  "=": "=",
+  Escape: "AC",
+  c: "AC",
+  C: "AC",
+  Backspace: "Backspace",
+  "*": "×",
+  x: "×",
+  X: "×",
+  "×": "×",
+  "/": "÷",
+  "\\": "÷",
+  "÷": "÷",
+  "+": "+",
+  "-": "-",
+  "%": "%",
+  "(": "(",
+  ")": ")",
+  ".": ".",
+  "0": "0",
+  "1": "1",
+  "2": "2",
+  "3": "3",
+  "4": "4",
+  "5": "5",
+  "6": "6",
+  "7": "7",
+  "8": "8",
+  "9": "9",
+};
+
 export function CalculatorWindow() {
   const [state, setState] = useState<KeypadState>(initialKeypad);
   const [historyOpen, setHistoryOpen] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [pressedKey, setPressedKey] = useState<string | null>(null);
   const answerRef = useRef<HTMLOutputElement>(null);
   const answerTextRef = useRef<HTMLSpanElement>(null);
   const outcome = state.expression ? calculateInput(state.expression) : null;
@@ -113,6 +150,51 @@ export function CalculatorWindow() {
     return () => {
       void unlisten.then((dispose) => dispose());
       clearTimeout(timer);
+    };
+  }, []);
+
+  // 全窗口键盘接管：识别到的键直接驱动对应按键（按压态 + 按键音），长按自动重复不重复发声；
+  // Tab/空格拦下避免挪焦点或触发按钮，其余键原样忽略；Cmd/Ctrl/Alt 组合键留给系统快捷键。
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const key = keyboardKeys[event.key];
+      if (key) {
+        event.preventDefault();
+        setPressedKey(key);
+        if (!event.repeat) playKeyClick();
+        setState((before) => pressKeypad(before, key));
+      } else if (event.key === "Tab" || event.key === " ") {
+        event.preventDefault();
+      }
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      const key = keyboardKeys[event.key];
+      if (key) setPressedKey((current) => (current === key ? null : current));
+    };
+    const onBlur = () => setPressedKey(null);
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", onBlur);
+    };
+  }, []);
+
+  // 算式屏底色跟随窗口焦点：输入框不可聚焦，窗口有焦点即处于「可输入」状态。
+  useEffect(() => {
+    const sync = () => {
+      document.documentElement.dataset.calcFocus = document.hasFocus() ? "on" : "off";
+    };
+    sync();
+    window.addEventListener("focus", sync);
+    window.addEventListener("blur", sync);
+    return () => {
+      window.removeEventListener("focus", sync);
+      window.removeEventListener("blur", sync);
+      delete document.documentElement.dataset.calcFocus;
     };
   }, []);
 
@@ -176,47 +258,29 @@ export function CalculatorWindow() {
           </div>
           <div className="calc-screen">
             <div className="calc-screen-caption">
-              <span>随手算一算</span>
+              {/* 出错时原位替换「随手算一算」，错误消失再换回来——不新增行，键盘不抖动。 */}
+              <span className={state.error ? "calc-error" : undefined} role="status">
+                {state.error ?? "随手算一算"}
+              </span>
             </div>
             <input
-              ref={inputRef}
               className="calc-expression"
               aria-label="计算器算式"
               placeholder="输入算式"
               value={state.expression}
+              readOnly
+              tabIndex={-1}
               spellCheck={false}
               autoComplete="off"
               maxLength={200}
-              onChange={(event) =>
-                setState((before) => ({
-                  ...before,
-                  expression: event.target.value,
-                  result: null,
-                  error: null,
-                }))
-              }
-              onKeyDown={(event) => {
-                if (event.nativeEvent.isComposing) return;
-                if (event.key === "Enter" || event.key === "=" || event.key === "Escape") {
-                  event.preventDefault();
-                  press(event.key);
-                } else if (
-                  state.result !== null &&
-                  (/^[\d.(+\-*/%]$/.test(event.key) || event.key === "Backspace") &&
-                  !event.metaKey &&
-                  !event.ctrlKey
-                ) {
-                  event.preventDefault();
-                  press(event.key);
-                }
+              onMouseDown={(event) => {
+                // 算式框不接受光标：聚焦就可能激活输入法转入中文；输入只走键盘接管与按键。
+                event.preventDefault();
               }}
             />
             <output ref={answerRef} className="calc-answer" aria-label="计算器结果" title={display}>
               <span ref={answerTextRef}>{display}</span>
             </output>
-            <div className="calc-error" role="status">
-              {state.error ?? ""}
-            </div>
           </div>
           <div className="keypad">
             {keys.map((key) => (
@@ -224,15 +288,14 @@ export function CalculatorWindow() {
                 key={key}
                 type="button"
                 aria-label={keyLabels[key] ?? key}
-                className={`calc-key ${key === "=" ? "key-equals" : ""} ${/[÷×+-]/.test(key) ? "key-operator" : ""} ${["AC", "(", ")", "Backspace", "±", "%"].includes(key) ? "key-function" : ""}`}
+                className={`calc-key ${key === "=" ? "key-equals" : ""} ${/[÷×+-]/.test(key) ? "key-operator" : ""} ${["AC", "(", ")", "Backspace", "±", "%"].includes(key) ? "key-function" : ""} ${key === pressedKey ? "is-pressed" : ""}`}
                 onPointerDown={(event) => {
-                  if (event.button === 0) event.preventDefault();
+                  if (event.button === 0) {
+                    event.preventDefault();
+                    playKeyClick();
+                  }
                 }}
-                onClick={(event) => {
-                  press(key);
-                  if (event.detail > 0 && document.activeElement !== inputRef.current)
-                    inputRef.current?.focus({ preventScroll: true });
-                }}
+                onClick={() => press(key)}
               >
                 {key === "Backspace" ? <Delete size={19} /> : key === "-" ? "−" : key}
               </button>
@@ -280,7 +343,7 @@ export function CalculatorWindow() {
                       title="使用这个结果继续计算"
                     >
                       <span>{item.expression}</span>
-                      <strong>= {item.display}</strong>
+                      <strong>= {item.result}</strong>
                     </button>
                     <button
                       type="button"

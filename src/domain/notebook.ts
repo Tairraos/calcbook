@@ -55,6 +55,14 @@ export function createNote(id: string, now: string, title = "未命名笔记", b
   return { id, title, filename: "", body, createdAt: now, updatedAt: now, trashed: false };
 }
 
+// 随手算：内存中的临时算稿，只存在于 App 状态里，绝不进入工作区与持久化层。
+// id 含「/」——文件名主干不允许出现斜杠（parseWorkspace 拒绝），不可能与真实笔记撞 id。
+export const SCRATCH_NOTE_ID = "scratch/随手算";
+export const SCRATCH_NOTE_BODY = "# 随手算笔记不会保存，app 退出即消失";
+export function createScratchNote(now: string): Note {
+  return createNote(SCRATCH_NOTE_ID, now, "随手算", SCRATCH_NOTE_BODY);
+}
+
 export const EXAMPLES = [
   {
     title: "周末出行计划",
@@ -75,7 +83,9 @@ export function createWorkspace(now: string, makeId: () => string): Workspace {
   return {
     version: 1,
     notes,
-    activeId: notes[0].id,
+    // activeId=null 表示「当前显示的不是我的笔记里的笔记」：首次打开落在随手算上，
+    // 由 App 依据该约定恢复视图（1.6.0 起）。
+    activeId: null,
     theme: "light",
     format: DEFAULT_FORMAT_SETTINGS,
     historyLimitKB: DEFAULT_HISTORY_LIMIT_KB,

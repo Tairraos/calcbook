@@ -2,11 +2,40 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DEFAULT_FORMAT_SETTINGS } from "../src/domain/formatting.ts";
 import {
+  createNote,
+  createScratchNote,
   createWorkspace,
   DEFAULT_HISTORY_LIMIT_KB,
   MAX_NOTE_LENGTH,
   parseWorkspace,
+  SCRATCH_NOTE_BODY,
+  SCRATCH_NOTE_ID,
 } from "../src/domain/notebook.ts";
+
+test("scratch note never collides with real note ids and carries the intro line", () => {
+  const scratch = createScratchNote(new Date().toISOString());
+  assert.equal(scratch.id, SCRATCH_NOTE_ID);
+  assert.equal(scratch.title, "随手算");
+  assert.equal(scratch.body, SCRATCH_NOTE_BODY);
+  assert.equal(scratch.body, "# 随手算笔记不会保存，app 退出即消失");
+  assert.equal(scratch.trashed, false);
+  // 真实笔记 id 来自文件名主干，slugify 会把「/」换成「-」，因此含「/」的 scratch id
+  // 不可能撞上任何真实笔记；它也永远不进 parseWorkspace 的持久化往返。
+  assert.match(SCRATCH_NOTE_ID, /\//);
+  // 普通工厂不受影响
+  const note = createNote("a.txt", new Date().toISOString());
+  assert.equal(note.body, "");
+});
+
+test("fresh workspace opens on the scratch view (activeId null survives round trip)", () => {
+  const workspace = createWorkspace(new Date().toISOString(), () => crypto.randomUUID());
+  // 约定：activeId=null 表示「当前显示的不是我的笔记里的笔记」——首次打开落在随手算
+  assert.equal(workspace.activeId, null);
+  assert.deepEqual(parseWorkspace(JSON.parse(JSON.stringify(workspace))), workspace);
+  // 指向真实笔记的 activeId 照常往返
+  workspace.activeId = workspace.notes[0].id;
+  assert.deepEqual(parseWorkspace(JSON.parse(JSON.stringify(workspace))), workspace);
+});
 
 test("workspace round trip preserves notes, theme and trash", () => {
   const workspace = createWorkspace(new Date().toISOString(), () => crypto.randomUUID());

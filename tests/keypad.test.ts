@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { calculateInput } from "../src/domain/calculation.ts";
 import { initialKeypad, pressKeypad } from "../src/domain/keypad.ts";
 
 const type = (keys: string[]) => keys.reduce(pressKeypad, initialKeypad);
@@ -23,17 +22,22 @@ test("editing controls and invalid arithmetic", () => {
   assert.equal(type(["8", "÷", "0", "="]).result, null);
   assert.ok(type(["8", "÷", "0", "="]).error);
 });
-test("four-place display never rounds the value used for continuation or history", () => {
+test("equals rewrites input and result to the same four-place value", () => {
+  const state = type(["1", "÷", "3", "="]);
+  assert.equal(state.expression, "0.3333");
+  assert.equal(state.display, "0.3333");
+  assert.equal(state.result, "0.3333");
+  assert.equal(state.history[0].expression, "1÷3");
+  assert.equal(state.history[0].result, "0.3333");
+  assert.equal(pressKeypad(state, "Backspace").expression, "0.333");
+});
+test("continuation, sign toggle and history reuse run on the displayed precision", () => {
   const state = type(["1", "÷", "7", "="]);
   assert.equal(state.display, "0.1429");
-  assert.ok(state.result && state.result.length > 60);
-  assert.equal(state.history[0].result, state.result);
-  assert.equal(state.history[0].display, "0.1429");
   const continued = ["×", "7", "="].reduce(pressKeypad, state);
-  const direct = calculateInput("(1/7)*7");
-  assert.ok(direct.ok);
-  assert.equal(continued.result, direct.raw);
-  assert.equal(continued.display, "1");
+  assert.equal(continued.display, "1.0003");
+  assert.equal(continued.expression, "1.0003");
+  assert.equal(pressKeypad(state, "AC").history[0].result, "0.1429");
 });
 test("sign toggle preserves scientific notation and leading decimals", () => {
   for (const [expression, toggled] of [

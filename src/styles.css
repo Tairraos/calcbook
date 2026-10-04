@@ -506,7 +506,7 @@ kbd {
 .save-error {
   color: var(--error);
 }
-/* 顶栏文字工具按钮（格式化 / 计算器）共用同一种观感 */
+/* 顶栏文字工具按钮（随手算 / 计算器）共用同一种观感 */
 .topbar-tool,
 .calculator-toggle {
   display: flex;
@@ -523,8 +523,9 @@ kbd {
   background: var(--hover);
   color: var(--ink);
 }
-/* 子窗口开着（含最小化）时按钮高亮绿。 */
-.calculator-toggle.is-open {
+/* 计算器子窗口开着（含最小化）、随手算正显示时，按钮高亮绿。 */
+.calculator-toggle.is-open,
+.topbar-tool.is-open {
   background: var(--sage);
   color: var(--green);
   border-color: var(--sage-border);
@@ -1149,7 +1150,8 @@ kbd {
     background 140ms ease,
     border-color 140ms ease;
 }
-.calc-screen:focus-within {
+/* 输入框不可聚焦（键盘整体接管）：算式屏底色随窗口焦点变化，窗口有焦点即可输入。 */
+:root[data-calc-focus="on"] .calc-screen {
   background: var(--calc-screen-focus);
   border-color: var(--strong-border);
 }
@@ -1157,10 +1159,16 @@ kbd {
   display: flex;
   justify-content: space-between;
   color: var(--green);
-  opacity: 0.8;
   font-size: 12px;
   letter-spacing: 0.5px;
   margin-bottom: 16px;
+}
+/* 错误信息与「随手算一算」同槽位原位替换：单行省略，任何文案都不改变屏的高度。 */
+.calc-screen-caption > span {
+  opacity: 0.8;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .calc-expression {
   background: transparent;
@@ -1173,7 +1181,6 @@ kbd {
   font-size: 14px;
   line-height: 23px;
   outline: none;
-  caret-color: var(--focus-caret);
 }
 .calc-expression:focus-visible,
 .search-field input:focus-visible {
@@ -1198,10 +1205,8 @@ kbd {
   line-height: 1.5;
 }
 .calc-error {
-  font-size: 12px;
   color: var(--error);
-  min-height: 14px;
-  padding-bottom: 4px;
+  opacity: 1;
 }
 .keypad {
   display: grid;
@@ -1219,11 +1224,14 @@ kbd {
   font-weight: 450;
   box-shadow: 0 1px 1px #00000003;
 }
-.calc-key:hover {
+/* is-pressed 是键盘按下态（keydown 加、keyup 撤）：与鼠标 hover/active 同款观感。 */
+.calc-key:hover,
+.calc-key.is-pressed {
   background: var(--key-hover);
   border-color: var(--strong-border);
 }
-.calc-key:active {
+.calc-key:active,
+.calc-key.is-pressed {
   box-shadow: inset 0 1px 4px #0002;
 }
 .key-function {
@@ -1244,7 +1252,8 @@ kbd {
   border-color: var(--green);
   font-size: 22px;
 }
-.key-equals:hover {
+.key-equals:hover,
+.key-equals.is-pressed {
   background: var(--green-hover);
   border-color: var(--green-hover);
 }

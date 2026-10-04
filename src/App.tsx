@@ -16,12 +16,13 @@ import {
   Search,
   Settings,
   Sparkles,
+  SquarePen,
   Sun,
   Trash2,
   Undo2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import logoDark from "./assets/dark.png";
 import logoLight from "./assets/light.png";
 import { convertUnitQuantity, evaluateNotebook } from "./domain/calculation.ts";
@@ -30,12 +31,14 @@ import type { FormatSettings } from "./domain/formatting.ts";
 import { formatNoteBody } from "./domain/formatting.ts";
 import {
   createNote,
+  createScratchNote,
   DEFAULT_HISTORY_LIMIT_KB,
   type HistoryEntry,
   MAX_NOTE_LENGTH,
   MAX_NOTES,
   MAX_TITLE_LENGTH,
   type Note,
+  SCRATCH_NOTE_ID,
 } from "./domain/notebook.ts";
 import {
   buildMatcher,
@@ -122,6 +125,10 @@ export default function App() {
   const [query, setQuery] = useState("");
   const [trashView, setTrashView] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  // 随手算：内存里的临时算稿。scratchNote 持有内容（App 运行期间一直在，切走再点按钮即恢复），
+  // scratchOpen 决定主区是否显示它；两者都不进工作区，因此不会被持久化。
+  const [scratchOpen, setScratchOpen] = useState(false);
+  const [scratchNote, setScratchNote] = useState<Note | null>(null);
   // 计算器是独立子窗口：visible 由 Rust 事件推送，浏览器预览恒为关。
   const [calculatorVisible, setCalculatorVisible] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -148,7 +155,10 @@ export default function App() {
       note.trashed === trashView &&
       `${note.title}\n${note.body}`.toLowerCase().includes(query.toLowerCase()),
   );
+  // 随手算打开时主区只显示它：侧栏里没有任何笔记处于选中态，面包屑显示「随手算」。
+  const scratch = scratchOpen && scratchNote ? scratchNote : null;
   const selected =
+    scratch ??
     notes.find((note) => note.id === workspace?.activeId && note.trashed === trashView) ??
     notes.find((note) => note.trashed === trashView);
   // 结果区显示设置（千分位、数字与单位空格）改动立即生效：作为 evaluateNotebook 参数参与 memo 依赖
@@ -406,6 +416,7 @@ export default function App() {
       }
       setTrashView(false);
       setQuery("");
+      setScratchOpen(false);
       resetActiveLine();
       requestAnimationFrame(() => editorRef.current?.focus());
       return true;
@@ -413,11 +424,42 @@ export default function App() {
     [workspace?.notes.length, resetActiveLine, update],
   );
 
+  // 随手算只经顶栏按钮打开：内存里已有内容就原样恢复，没有才新建一行提示语。
+  // 打开即把 activeId 置空并持久化——「上次视图 = 随手算」，重开 app 时据此恢复为新随手算。
+  const openScratch = useCallback(() => {
+    setScratchNote((before) => before ?? createScratchNote(new Date().toISOString()));
+    setScratchOpen(true);
+    update((before) => ({ ...before, activeId: null }));
+    resetActiveLine();
+    requestAnimationFrame(() => editorRef.current?.focus());
+  }, [resetActiveLine, update]);
+
+  // 启动恢复视图：activeId 无效——上次在随手算或废纸篓（null/空）、上次笔记已不存在、
+  // 或首次打开——就打开一篇新的随手算（内存内容不跨进程，新的即初始一行提示）。
+  // 判定不回写 activeId：幂等，下次启动同样成立；用户点开哪篇笔记由后续操作持久化。
+  const bootedRef = useRef(false);
+  useLayoutEffect(() => {
+    if (!workspace || bootedRef.current) return;
+    bootedRef.current = true;
+    const active = workspace.notes.find((note) => note.id === workspace.activeId);
+    if (!active || active.trashed) {
+      setScratchNote((before) => before ?? createScratchNote(new Date().toISOString()));
+      setScratchOpen(true);
+    }
+  }, [workspace]);
+
   function patchNote(patch: Pick<Note, "body">) {
     if (!selected) return;
     // 用户手动编辑后，格式化的应用内撤销作废
     if (patch.body !== undefined && patch.body !== formatUndoRef.current?.formatted)
       formatUndoRef.current = null;
+    if (selected.id === SCRATCH_NOTE_ID) {
+      // 随手算只改内存状态，不走持久化队列
+      setScratchNote((before) =>
+        before ? { ...before, ...patch, updatedAt: new Date().toISOString() } : before,
+      );
+      return;
+    }
     update((before) => ({
       ...before,
       notes: before.notes.map((note) =>
@@ -439,7 +481,8 @@ export default function App() {
   const commitTitle = useCallback(() => {
     const current = titleDraftRef.current;
     setTitleDraft(null);
-    if (!current || !selected || selected.trashed) return;
+    // 随手算没有文件名，标题不可改
+    if (!current || !selected || selected.trashed || selected.id === SCRATCH_NOTE_ID) return;
     const name = current.value.trim();
     if (!name || name === selected.title) return;
     void renameNote(selected.id, name);
@@ -468,6 +511,8 @@ export default function App() {
   const lastSelectedRef = useRef<{ id: string; body: string } | null>(null);
   const recordNoteHistory = useCallback(
     (noteId: string, body: string): Promise<void> => {
+      // 随手算没有历史：不落盘也就无从留档
+      if (noteId === SCRATCH_NOTE_ID) return Promise.resolve();
       const note = workspace?.notes.find((item) => item.id === noteId);
       if (!note || note.trashed) return Promise.resolve();
       // 仅空行与空格视为空文件，存历史也没有内容可回溯，不留档；有文字或数字都算实质内容
@@ -541,6 +586,11 @@ export default function App() {
   const activeNoteId = selected?.id ?? null;
   useEffect(() => {
     if (!historyOpen || !activeNoteId) return;
+    // 随手算没有历史：弹窗永远是空的，也不去查询存储层
+    if (activeNoteId === SCRATCH_NOTE_ID) {
+      setHistoryEntries([]);
+      return;
+    }
     let disposed = false;
     setHistoryEntries(null);
     void listHistory(activeNoteId, localHourPrefix())
@@ -628,8 +678,9 @@ export default function App() {
       setNotice("格式已是最新的。");
       return;
     }
-    // 格式化是破坏性操作：整理前的内容先留档进历史
-    void recordNoteHistory(selected.id, selected.body);
+    const isScratch = selected.id === SCRATCH_NOTE_ID;
+    // 格式化是破坏性操作：整理前的内容先留档进历史（随手算没有历史可留）
+    if (!isScratch) void recordNoteHistory(selected.id, selected.body);
     const textarea = editorRef.current;
     if (textarea && formatted.length <= MAX_NOTE_LENGTH) {
       textarea.focus();
@@ -649,14 +700,20 @@ export default function App() {
     // 回退路径：React 状态替换，原生撤销栈没有这条记录，
     // 记住格式化前的正文，Cmd+Z 在无后续编辑时直接恢复。
     formatUndoRef.current = { noteId: selected.id, previous: selected.body, formatted };
-    update((before) => ({
-      ...before,
-      notes: before.notes.map((note) =>
-        note.id === selected.id
-          ? { ...note, body: formatted, updatedAt: new Date().toISOString() }
-          : note,
-      ),
-    }));
+    if (isScratch) {
+      setScratchNote((before) =>
+        before ? { ...before, body: formatted, updatedAt: new Date().toISOString() } : before,
+      );
+    } else {
+      update((before) => ({
+        ...before,
+        notes: before.notes.map((note) =>
+          note.id === selected.id
+            ? { ...note, body: formatted, updatedAt: new Date().toISOString() }
+            : note,
+        ),
+      }));
+    }
     setNotice("已按格式设置整理本页算式");
   }, [selected, workspace, update, recordNoteHistory]);
 
@@ -786,14 +843,23 @@ export default function App() {
       ) {
         event.preventDefault();
         formatUndoRef.current = null;
-        update((before) => ({
-          ...before,
-          notes: before.notes.map((note) =>
-            note.id === formatUndo.noteId
-              ? { ...note, body: formatUndo.previous, updatedAt: new Date().toISOString() }
-              : note,
-          ),
-        }));
+        if (selected.id === SCRATCH_NOTE_ID) {
+          // 随手算的格式化撤销只回内存状态
+          setScratchNote((before) =>
+            before
+              ? { ...before, body: formatUndo.previous, updatedAt: new Date().toISOString() }
+              : before,
+          );
+        } else {
+          update((before) => ({
+            ...before,
+            notes: before.notes.map((note) =>
+              note.id === formatUndo.noteId
+                ? { ...note, body: formatUndo.previous, updatedAt: new Date().toISOString() }
+                : note,
+            ),
+          }));
+        }
         setNotice("已撤销格式化");
         return;
       }
@@ -899,7 +965,20 @@ export default function App() {
                   if (trashView) {
                     setTrashView(false);
                     setQuery("");
+                    setScratchOpen(false);
                     resetActiveLine();
+                    // activeId 无效（随手算/废纸篓/悬空）时落回第一篇可用笔记，
+                    // 让「上次视图 = 我的笔记」重新有据可依
+                    update((before) => {
+                      const current = before.notes.find(
+                        (note) => note.id === before.activeId && !note.trashed,
+                      );
+                      if (current) return before;
+                      return {
+                        ...before,
+                        activeId: before.notes.find((note) => !note.trashed)?.id ?? null,
+                      };
+                    });
                   }
                 }}
               >
@@ -913,7 +992,10 @@ export default function App() {
                   if (!trashView) {
                     setTrashView(true);
                     setQuery("");
+                    setScratchOpen(false);
                     resetActiveLine();
+                    // 废纸篓视图不属于「我的笔记」：清掉 activeId，重开 app 时落在随手算
+                    update((before) => ({ ...before, activeId: null }));
                   }
                 }}
               >
@@ -947,6 +1029,7 @@ export default function App() {
                 aria-current={selected?.id === note.id ? "page" : undefined}
                 aria-haspopup="menu"
                 onClick={() => {
+                  setScratchOpen(false);
                   update((before) => ({ ...before, activeId: note.id }));
                   resetActiveLine();
                   if (isDesktopApp) void ensureNoteFile(note.id);
@@ -1017,26 +1100,32 @@ export default function App() {
               {sidebarOpen ? <PanelLeftClose size={17} /> : <PanelLeftOpen size={17} />}
             </IconButton>
             <BookOpen size={15} />
-            <span>{trashView ? "废纸篓" : "我的笔记"}</span>
-            <ChevronRight size={13} />
-            <strong>{selected?.title || (trashView ? "空" : "新的一页")}</strong>
+            {scratchOpen ? (
+              <strong>随手算</strong>
+            ) : (
+              <>
+                <span>{trashView ? "废纸篓" : "我的笔记"}</span>
+                <ChevronRight size={13} />
+                <strong>{selected?.title || (trashView ? "空" : "新的一页")}</strong>
+              </>
+            )}
           </div>
           <div className="topbar-actions">
-            {status === "error" ? (
+            {status === "error" && (
               <span className="save-status save-error" role="alert">
                 尚未保存
               </span>
-            ) : (
-              <button
-                type="button"
-                className="topbar-tool"
-                title="按格式设置整理当前笔记的全部算式"
-                onClick={applyFormatting}
-              >
-                <Sparkles size={16} />
-                <span>格式化</span>
-              </button>
             )}
+            <button
+              type="button"
+              className={`topbar-tool ${scratchOpen ? "is-open" : ""}`}
+              aria-pressed={scratchOpen}
+              title="随手算：内存里的临时算稿，不保存为文件，app 退出即消失；再点从普通笔记切回时恢复内容"
+              onClick={openScratch}
+            >
+              <SquarePen size={16} />
+              <span>随手算</span>
+            </button>
             <button
               type="button"
               className={`calculator-toggle ${calculatorVisible ? "is-open" : ""}`}
@@ -1072,20 +1161,21 @@ export default function App() {
                 <div className="note-meta">
                   <span className="note-type">
                     <FileText size={12} />
-                    {date(selected.updatedAt)}更新
+                    {scratchOpen ? "临时笔记" : `${date(selected.updatedAt)}更新`}
                   </span>
                   <span className="note-saved-dot" />
                   <span>边想，边记，边算</span>
                 </div>
+                {/* 顺序约定：查找替换、格式化、历史、删除（废纸篓视图为恢复/永久删除）、语法速查 */}
                 <div className="note-tools">
-                  <IconButton title="语法速查" onClick={() => setHelpOpen(true)}>
-                    <CircleHelp size={16} />
-                  </IconButton>
                   <IconButton
                     title={findOpen ? "关闭查找替换（Esc）" : "查找替换（Cmd+F）"}
                     onClick={toggleFind}
                   >
                     <Search size={16} />
+                  </IconButton>
+                  <IconButton title="按格式设置整理本页算式" onClick={applyFormatting}>
+                    <Sparkles size={16} />
                   </IconButton>
                   <IconButton title="历史记录" onClick={() => setHistoryOpen(true)}>
                     <CalendarClock size={16} />
@@ -1110,7 +1200,8 @@ export default function App() {
                     </>
                   ) : (
                     <IconButton
-                      title="移到废纸篓"
+                      title={scratchOpen ? "随手算不会保存为文件，不能移到废纸篓" : "移到废纸篓"}
+                      disabled={scratchOpen}
                       onClick={() =>
                         setConfirmDelete({
                           mode: "trash",
@@ -1122,16 +1213,23 @@ export default function App() {
                       <Trash2 size={16} />
                     </IconButton>
                   )}
+                  <IconButton title="语法速查" onClick={() => setHelpOpen(true)}>
+                    <CircleHelp size={16} />
+                  </IconButton>
                 </div>
               </div>
               <input
                 className="note-title"
                 aria-label="笔记标题"
-                title="标题即文件名；回车或移开焦点后生效"
-                value={draft ?? selected.title}
+                title={
+                  scratchOpen
+                    ? "随手算没有文件名，也不会保存"
+                    : "标题即文件名；回车或移开焦点后生效"
+                }
+                value={scratchOpen ? "随手算" : (draft ?? selected.title)}
                 placeholder="未命名笔记"
                 maxLength={MAX_TITLE_LENGTH}
-                readOnly={selected.trashed}
+                readOnly={scratchOpen || selected.trashed}
                 onChange={(event) => setTitleDraft({ id: selected.id, value: event.target.value })}
                 onBlur={commitTitle}
                 onKeyDown={(event) => {

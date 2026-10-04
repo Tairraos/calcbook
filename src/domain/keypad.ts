@@ -1,6 +1,7 @@
 import { calculateInput } from "./calculation.ts";
 
-export type HistoryItem = { expression: string; result: string; display: string };
+// result 是可复用继续计算的结果值（与显示一致的四位精度），expression 保留原始算式供回看与写回笔记。
+export type HistoryItem = { expression: string; result: string };
 export type KeypadState = {
   expression: string;
   display: string;
@@ -22,14 +23,17 @@ export function pressKeypad(state: KeypadState, key: string): KeypadState {
     if (!state.expression || state.result !== null) return state;
     const outcome = calculateInput(state.expression);
     if (!outcome.ok) return { ...state, error: outcome.error };
+    const source = state.expression;
     return {
       ...state,
-      result: outcome.raw,
+      // 等号后算式框与结果列同时变成结果值；续算、退格都基于显示精度。
+      expression: outcome.display,
+      result: outcome.display,
       display: outcome.display,
       error: null,
       history: [
-        { expression: state.expression, result: outcome.raw, display: outcome.display },
-        ...state.history.filter((item) => item.expression !== state.expression),
+        { expression: source, result: outcome.display },
+        ...state.history.filter((item) => item.expression !== source),
       ].slice(0, 20),
     };
   }
