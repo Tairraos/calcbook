@@ -1070,6 +1070,9 @@ kbd {
   background: var(--calculator);
   overflow: hidden;
   position: relative;
+  /* 计算器里的文字（按键符号、屏显、提示）不参与拖选 */
+  user-select: none;
+  -webkit-user-select: none;
 }
 .calc-drag-strip {
   position: absolute;
@@ -1216,7 +1219,7 @@ kbd {
 .calc-key {
   display: grid;
   place-items: center;
-  border: 1px solid transparent; /* 占位保持尺寸，观感交给层叠厚边 */
+  border: 1px solid var(--calc-key-border); /* 浅色主题浅灰细边给键面轮廓；深色主题透明 */
   background: var(--key);
   border-radius: 10px;
   height: 41px;
@@ -1244,6 +1247,7 @@ kbd {
 .key-operator {
   color: var(--calc-orange-ink);
   background: var(--calc-orange-gradient);
+  border-color: var(--calc-orange-border);
   font-size: 19px;
   box-shadow: var(--calc-orange-shadow);
 }
@@ -1251,6 +1255,7 @@ kbd {
   grid-column: span 3;
   background: var(--calc-orange-gradient);
   color: var(--calc-orange-ink);
+  border-color: var(--calc-orange-border);
   font-size: 22px;
   box-shadow: var(--calc-orange-shadow);
 }
