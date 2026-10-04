@@ -1216,46 +1216,46 @@ kbd {
 .calc-key {
   display: grid;
   place-items: center;
-  border: 1px solid var(--border);
+  border: 1px solid transparent; /* 占位保持尺寸，观感交给层叠厚边 */
   background: var(--key);
-  border-radius: 7px;
+  border-radius: 10px;
   height: 41px;
   font-size: 17px;
   font-weight: 450;
-  box-shadow: 0 1px 1px #00000003;
+  box-shadow: var(--calc-key-shadow);
+  transition: 0.05s ease;
 }
-/* is-pressed 是键盘按下态（keydown 加、keyup 撤）：与鼠标 hover/active 同款观感。 */
-.calc-key:hover,
-.calc-key.is-pressed {
+/* 悬停只变色（浅色更暗、深色更亮，随 --key-hover 主题值）。 */
+.calc-key:hover {
   background: var(--key-hover);
-  border-color: var(--strong-border);
 }
+/* is-pressed 是键盘按下态（keydown 加、keyup 撤）：与鼠标按下同款——
+   整体下沉 2px 沉进自己的层叠厚边，投影原样保留。 */
 .calc-key:active,
 .calc-key.is-pressed {
-  box-shadow: inset 0 1px 4px #0002;
+  translate: 0 2px;
 }
 .key-function {
   color: var(--muted);
   font-size: 14px;
   background: var(--function-key);
+  box-shadow: var(--calc-function-shadow);
 }
 .key-operator {
-  color: var(--green);
-  background: var(--sage);
+  color: var(--calc-orange-ink);
+  background: var(--calc-orange-gradient);
   font-size: 19px;
-  border-color: var(--sage-border);
+  box-shadow: var(--calc-orange-shadow);
 }
 .key-equals {
   grid-column: span 3;
-  background: var(--green);
-  color: var(--inverse);
-  border-color: var(--green);
+  background: var(--calc-orange-gradient);
+  color: var(--calc-orange-ink);
   font-size: 22px;
+  box-shadow: var(--calc-orange-shadow);
 }
-.key-equals:hover,
-.key-equals.is-pressed {
-  background: var(--green-hover);
-  border-color: var(--green-hover);
+.key-equals:hover {
+  background: var(--calc-orange-hover);
 }
 /* 高度固定：清空按钮只在有历史时渲染，若行高随内容变化标题会上下移动。 */
 .calc-history-heading {
