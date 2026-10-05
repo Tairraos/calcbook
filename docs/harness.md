@@ -20,9 +20,10 @@ CALCBOOK_DATA_DIR="$PWD/.calcbook-data/workspace" \
 pnpm desktop
 ```
 
-浏览器预览按端口隔离 localStorage。`pnpm dev`（`scripts/dev.mjs`）启动前会结束占用所选端口的监听进程——同一端口再起一个预览会把前一个顶掉，需要并跑时换端口。桌面必须同时设置上述两个绝对路径来隔离回归数据；不设置时，开发版与发行版都使用 `~/.calcbook` 或用户选定目录。显式隔离后不会从正式目录迁移笔记。Tauri devUrl 随端口同步；不清空或改写真实笔记来“修复”测试。
-
-开发服务器支持按住 ⌥/Alt 右键点击页面元素，在编辑器中打开对应组件源码（vite-plugin-react-click-to-component，仅 dev 服务器生效，生产构建不含）。
+- 浏览器预览按端口隔离 localStorage；`pnpm dev`（`scripts/dev.mjs`）启动前会结束占用所选端口的监听进程——同一端口再起一个预览会把前一个顶掉，需要并跑时换端口。
+- 桌面必须同时设置上述两个绝对路径来隔离回归数据；不设置时，开发版与发行版都使用 `~/.calcbook` 或用户选定目录，显式隔离后不会从正式目录迁移笔记。
+- Tauri devUrl 随端口同步；不清空或改写真实笔记来“修复”测试。
+- 开发服务器支持按住 ⌥/Alt 右键点击页面元素，在编辑器中打开对应组件源码（vite-plugin-react-click-to-component，仅 dev 服务器生效，生产构建不含）。
 
 ## 3. 执行反馈
 
