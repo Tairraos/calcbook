@@ -9,4 +9,5 @@ src-tauri/gen/
 artifacts/
 .calcbook-data/
 .zcode/
-.workbuddy/
+.workbuddy/.workbuddy/
+keypad-neumorphic-demo.html
