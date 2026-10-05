@@ -49,6 +49,8 @@ test("sign toggle preserves scientific notation and leading decimals", () => {
     assert.equal(pressKeypad(state, "±").expression, toggled);
     assert.equal(pressKeypad(pressKeypad(state, "±"), "±").expression, expression);
   }
-  const result = pressKeypad({ ...initialKeypad, expression: "1e20" }, "=");
-  assert.equal(pressKeypad(pressKeypad(result, "±"), "=").result, "-1e+20");
+  // 数字宽度上限（1.6.10）：1e20 是 21 位整数，等号后报「数字宽度超限」而非科学计数法结果
+  const overflow = pressKeypad({ ...initialKeypad, expression: "1e20" }, "=");
+  assert.equal(overflow.result, null);
+  assert.equal(overflow.error, "数字宽度超限");
 });

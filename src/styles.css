@@ -650,7 +650,9 @@ kbd {
 .editor-grid {
   --editor-line-height: 23px;
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 135px;
+  /* 结果列 auto：随内容自适应——最小 135px、上限 220px 由 .editor-results 的
+     min/max-width 约束，多余空间全部留给编辑列（1.6.10 起） */
+  grid-template-columns: 42px minmax(0, 1fr) auto;
   position: relative;
   /* biome-ignore lint/complexity/noImportantStyles: Row sizing overrides the inline 34px estimate without changing editor logic. */
   min-height: 0 !important;
@@ -872,7 +874,9 @@ kbd {
 }
 .editor-results {
   padding: 15px 18px 0 8px;
-  min-width: 0;
+  /* 宽度随内容自适应：最窄维持 135px，显示不下自动加宽，最宽 220px（超出省略） */
+  min-width: 135px;
+  max-width: 220px;
   border-left: 1px solid var(--subtle-border);
 }
 .result-row {

@@ -263,14 +263,23 @@ export function formatUnitSuffix(
   return result;
 }
 
-// 显示数值：小数最多 4 位（四舍五入），≥1e10 转科学计数法（尾数同为 4 位）。
+// 数字宽度：输入数字整数部分最长 16 位、小数部分最长 4 位，超出不计算。
+// 在 normalize 之后逐个扫描数字字面量（千分位逗号此时已剥离）。
+function checkNumberWidth(expression: string): void {
+  for (const match of expression.matchAll(/\d*\.?\d+/g)) {
+    const [integer = "", decimal = ""] = match[0].split(".");
+    if (integer.replace(/^0+(?=\d)/, "").length > 16 || decimal.length > 4)
+      throw new Error("数字宽度超限");
+  }
+}
+
+// 显示数值：小数最多 4 位（四舍五入），整数部分最长 16 位。
 // 千位分隔只作用于整数部分——4 位小数会被全串正则误切（666.6667 → 666.6,667）。
+// 舍入后整数部分超过 16 位（含进位到 17 位）直接报「数字宽度超限」，不用科学计数法。
 function formatDisplayNumber(numeric: BigNumber | number, thousands = true): string {
   const decimal = isBigNumber(numeric) ? numeric : math.bignumber(numeric);
   const rounded = decimal.toDecimalPlaces(4);
-  if (rounded.abs().gte("1e10")) {
-    return decimal.toExponential(4).replace(/\.?0+e/, "e");
-  }
+  if (rounded.abs().trunc().toFixed().length > 16) throw new Error("数字宽度超限");
   if (rounded.isZero()) return "0";
   const [intPart, decimalPart] = rounded.toFixed().split(".");
   const grouped = thousands ? intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",") : intPart;
@@ -452,6 +461,7 @@ export function calculate(
     return percentages.has(name) && isBigNumber(value) ? `${value.times(100).toString()}%` : name;
   });
   if (!expression) throw new Error("先输入一个算式");
+  checkNumberWidth(expression);
   const tree = math.parse(expression);
   // 行内单位 token（大小写/中文）+ 作用域变量携带的单位
   const seen = [...scanUnitTokens(source), ...validateTree(tree, scope)];

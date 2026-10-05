@@ -49,7 +49,7 @@ test("result display unit spacing follows the option, raw and file format keep t
   assert.equal(raw.raw, "5000 m");
 });
 
-test("calculator display rounds to four places and switches at ten integer digits", () => {
+test("calculator display rounds to four places and caps at sixteen integer digits", () => {
   for (const [source, display] of [
     ["1/3", "0.3333"],
     ["2/3", "0.6667"],
@@ -59,8 +59,8 @@ test("calculator display rounds to four places and switches at ten integer digit
     ["9999999999.9994", "9,999,999,999.9994"],
     ["-9999999999.999", "-9,999,999,999.999"],
     ["9999999999.9995", "9,999,999,999.9995"],
-    ["12345678901", "1.2346e+10"],
-    ["1e308", "1e+308"],
+    ["12345678901", "12,345,678,901"],
+    ["9999999999999999", "9,999,999,999,999,999"],
     ["1 CNY / 3", "0.3333CNY"],
     ["16:9", "1.7778"],
     ["8 : 4", "2"],
@@ -69,6 +69,27 @@ test("calculator display rounds to four places and switches at ten integer digit
     assert.ok(result.ok, source);
     assert.equal(result.display, display, source);
   }
+});
+test("number width limit: 16 integer digits and 4 decimals, beyond that the line errors", () => {
+  // 输入数字超宽：17 位整数、5 位小数；结果超宽（1e308 舍入后 309 位整数）
+  for (const source of ["12345678901234567", "0.12345", "1e308"]) {
+    const result = calculateInput(source);
+    assert.equal(result.ok, false, source);
+    assert.equal(result.ok ? "" : result.error, "数字宽度超限", source);
+  }
+  // 上限内正常（16 位整数、4 位小数）
+  assert.equal(calculateInput("9999999999999999").ok, true);
+  assert.equal(calculateInput("0.1234").ok, true);
+  // 结果超宽：进位到 17 位整数、大幂结果
+  for (const source of ["9999999999999999 + 1", "2^60"]) {
+    const [line] = evaluateNotebook(source);
+    assert.equal(line.kind, "error", source);
+    assert.equal(line.error, "数字宽度超限", source);
+  }
+  // 笔记里 5 位小数整行报错，错误在结果位置
+  const [line] = evaluateNotebook("12.34567");
+  assert.equal(line.kind, "error");
+  assert.equal(line.error, "数字宽度超限");
 });
 test("assignment names conflicting with reserved words name the conflict", () => {
   for (const [source, category] of [
