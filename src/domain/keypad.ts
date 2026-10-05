@@ -88,25 +88,30 @@ export function pressKeypad(state: KeypadState, key: string): KeypadState {
       expression = expression.replace(/((?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)$/i, "(-$1)");
     }
   } else {
-    if (!/^[\d.+\-*/()%×÷]$/.test(key)) return state;
+    if (!/^[\d.+\-*/()%×÷‰]$/.test(key)) return state;
     if (state.result !== null && /^[\d.(]$/.test(key)) expression = "";
     if (expression.length >= 200) return state;
-    // 输入容错（1.6.13）：数字不跟在关括号后（)8 的 8 没有反应）；% 只跟在数字后
-    //（单独输入、跟在运算符/关括号后都没反应，连续 % 天然只留一个）。
+    // 输入容错（1.6.13）：数字不跟在关括号后（)8 的 8 没有反应）。
     if (/^\d$/.test(key) && /[)\]}]$/.test(expression)) return state;
+    // 百分号键切换（1.6.17）：末尾是 % 改 ‰、是 ‰ 改 %（按钮显示 %|‰），
+    // 其余情况按原规则只在数字后追加 %（单独/跟运算符/连续都无反应或只留一个）。
+    if (key === "%" && /[‰%]$/.test(expression)) {
+      expression = expression.slice(0, -1) + (expression.endsWith("‰") ? "%" : "‰");
+      return { ...state, expression, display: expression || "0", result: null, error: null };
+    }
     if (key === "%") {
       if (!/\d$/.test(expression)) return state;
     } else if (key === ".") {
       // 小数点：连续输入只留一个；不跟在关括号/百分号后（开括号/运算符后先补 0）
-      if (/\d*\.\d*$/.test(expression) || /[)%\]}]$/.test(expression)) return state;
+      if (/\d*\.\d*$/.test(expression) || /[)%\]}‰]$/.test(expression)) return state;
       if (!expression || /[+\-*/×÷(]$/.test(expression)) expression += "0";
     } else if (key === ")") {
       // 没有未闭合的开括号时关括号没反应；也只能跟在数字/百分号/关括号后
-      if (!/[\d%)\]}]$/.test(expression) || unclosedDepth(expression) === 0) return state;
+      if (!/[\d%‰)\]}]$/.test(expression) || unclosedDepth(expression) === 0) return state;
     } else if (key === "(") {
       // 括号最多 3 层；跟在数字/百分号/关括号后自动补乘号（8( → 8×(，一输完立刻出现）
       if (unclosedDepth(expression) >= 3) return state;
-      if (/[\d.%)\]}]$/.test(expression)) expression += "×";
+      if (/[\d.%‰)\]}]$/.test(expression)) expression += "×";
     }
     if (/^[+*/×÷]$/.test(key) && !expression) return state;
     // 运算符连续输入就是修改：末尾运算符被新运算符替换（+ 再 - 只留 -）

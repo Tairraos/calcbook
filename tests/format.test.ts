@@ -205,3 +205,9 @@ test("格式化把括号收敛为 {[( )]} 嵌套形态，且不改变求值结�
   // 单层括号保持 ()
   assert.equal(formatNoteBody("(10 x 体重) + 3", settings, convertUnitQuantity), "(10 × 体重) + 3");
 });
+
+test("per-mille formats like a percent token", () => {
+  const settings = DEFAULT_FORMAT_SETTINGS;
+  assert.equal(formatNoteBody("200+10‰", settings, convertUnitQuantity), "200 + 10‰");
+  assert.equal(formatNoteBody("50‰", settings, convertUnitQuantity), "50‰");
+});

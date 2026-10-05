@@ -144,3 +144,14 @@ test("digit input is capped at 16 integer digits and 4 decimals", () => {
   // 退格后可以继续输入
   assert.equal(pressKeypad(full, "Backspace").expression, "999999999999999");
 });
+
+test("percent key toggles between % and ‰ and per-mille evaluates", () => {
+  assert.equal(type(["2", "0", "0", "+", "1", "0", "%"]).expression, "200+10%");
+  assert.equal(type(["2", "0", "0", "+", "1", "0", "%", "%"]).expression, "200+10‰");
+  assert.equal(type(["2", "0", "0", "+", "1", "0", "%", "%", "%"]).expression, "200+10%");
+  assert.equal(type(["2", "0", "0", "+", "1", "0", "%", "%", "="]).result, "202");
+  assert.equal(type(["5", "0", "%", "%", "="]).result, "0.05");
+  // 容错保留：% 单独/跟运算符无反应；‰ 后按 % 切回
+  assert.equal(type(["2", "+", "%"]).expression, "2+");
+  assert.equal(type(["2", "0", "0", "+", "1", "0", "%", "%", "+"]).expression, "200+10‰+");
+});

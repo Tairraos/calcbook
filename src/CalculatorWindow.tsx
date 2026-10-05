@@ -58,10 +58,10 @@ const keyLabels: Record<string, string> = {
   "-": "减",
   "+": "加",
   "=": "等于",
-  "%": "百分比",
   "(": "左括号",
   ")": "右括号",
   ".": "小数点",
+  "%": "百分比/千分号切换",
 };
 
 // 物理键 → 按键：回车是等于，C 是清空，x 与 * 都是乘号，/ 与 \ 都是除号（显示为 × ÷）。
@@ -306,7 +306,15 @@ export function CalculatorWindow() {
                 }}
                 onClick={() => press(key)}
               >
-                {key === "Backspace" ? <Delete size={19} /> : key === "-" ? "−" : key}
+                {key === "Backspace" ? (
+                  <Delete size={19} />
+                ) : key === "-" ? (
+                  "−"
+                ) : key === "%" ? (
+                  "%|‰"
+                ) : (
+                  key
+                )}
               </button>
             ))}
           </div>

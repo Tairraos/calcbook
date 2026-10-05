@@ -104,7 +104,7 @@ type Token = {
 function tokenize(expression: string): Token[] {
   const tokens: Token[] = [];
   const pattern =
-    /(\d[\d,]*(?:\.\d+)?(?:[eE][+-]?\d+)?)|([\p{L}_][\p{L}\p{N}_]*)|([+\-*/×÷^=])|([()[\]{}])|(%)|(:)/gu;
+    /(\d[\d,]*(?:\.\d+)?(?:[eE][+-]?\d+)?)|([\p{L}_][\p{L}\p{N}_]*)|([+\-*/×÷^=])|([()[\]{}])|([%‰])|(:)/gu;
   let lastIndex = 0;
   for (const match of expression.matchAll(pattern)) {
     if (match.index > lastIndex) {

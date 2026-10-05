@@ -177,14 +177,22 @@ function normalize(source: string): string {
     .replace(/\btimes\b/g, "*")
     .replace(/\bdivided by\b/g, "/");
   expression = normalizeMultiplication(expression);
-  const percent = expression.match(/^(-?\d+(?:\.\d+)?)%\s+(of|on|off)\s+(.+)$/);
-  if (percent) {
-    const [, amount, operation, base] = percent;
+  // 百分比短语：‰ 与 % 同族（of 按千分之一/百分之一取值，on/off 相对基数加减）
+  const phrase = expression.match(/^(-?\d+(?:\.\d+)?)([%‰])\s+(of|on|off)\s+(.+)$/);
+  if (phrase) {
+    const [, amount, sign, operation, base] = phrase;
+    const op = operation === "on" ? "+" : "-";
     expression =
       operation === "of"
-        ? `(${base}) * (${amount} / 100)`
-        : `(${base}) ${operation === "on" ? "+" : "-"} ${amount}%`;
+        ? `(${base}) * (${amount} / ${sign === "‰" ? "1000" : "100"})`
+        : sign === "‰"
+          ? `(${base}) ${op} (${amount}/10)%`
+          : `(${base}) ${op} ${amount}%`;
   }
+  // 千分号（1.6.17）：‰ 按千分之一参与——数字后缀换写成百分号（10‰ ≡ 1%，相对语义与 % 一致）；
+  // 变量后缀按数值处理（x‰ → (x/1000)）。百分比变量本身已带 ‰ 信息（千分率 = 10‰ 存 0.01）。
+  expression = expression.replace(/(\d+(?:\.\d+)?)‰/g, "($1/10)%");
+  expression = expression.replace(/([\p{L}_][\p{L}\p{N}_]*)‰/gu, "($1/1000)");
   return expression;
 }
 
