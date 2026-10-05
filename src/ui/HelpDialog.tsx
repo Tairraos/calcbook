@@ -367,7 +367,9 @@ export function HelpDialog({
         <div className="help-notes">
           <p>
             字母 <code>x</code> 也可以表示乘法，例如 <code>2x3</code>；<code>[]</code>、
-            <code>{"{}"}</code> 和 <code>()</code> 都可以用作括号。
+            <code>{"{}"}</code> 和 <code>()</code> 都可以用作括号。括号最多嵌套 3 层，嵌套形态固定为{" "}
+            <code>{"{[( )]}"}</code>：最内层 <code>()</code>，向外 <code>[]</code>、
+            <code>{"{}"}</code>。
           </p>
           <p>
             <code>#</code> 开头写标题，<code>{"//"}</code> 写注释，<code>标签：</code>{" "}

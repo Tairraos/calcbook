@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { evaluateNotebook } from "../src/domain/calculation.ts";
+import { convertUnitQuantity, evaluateNotebook } from "../src/domain/calculation.ts";
 import { parseNoteBody, serializeNoteBody, stripResult } from "../src/domain/format.ts";
+import { DEFAULT_FORMAT_SETTINGS, formatNoteBody } from "../src/domain/formatting.ts";
 
 // 用户真实保存的 Numi 文件（= 后面的结果是 Numi 保存时自动追加的）。
 const 氨糖研究 = `#氨糖研究
@@ -187,4 +188,20 @@ test("导入时剥离保留字追加的结果与注释前结果", () => {
   assert.equal(serializeNoteBody("小明 = 50"), "小明 = 50 = 50");
   assert.equal(serializeNoteBody("(18 + 24) × 3"), "(18 + 24) × 3 = 126");
   assert.equal(serializeNoteBody("24\n36\nsum"), "24 = 24\n36 = 36\nsum = 60");
+});
+
+test("格式化把括号收敛为 {[( )]} 嵌套形态，且不改变求值结果", () => {
+  const settings = DEFAULT_FORMAT_SETTINGS;
+  // 一层 ()、两层 [()]、三层 {[( )]}：最内层是 ()，向外逐层换形
+  assert.equal(formatNoteBody("([1 + 2])", settings, convertUnitQuantity), "[(1 + 2)]");
+  assert.equal(formatNoteBody("(([1 + 2]))", settings, convertUnitQuantity), "{[(1 + 2)]}");
+  const formatted = formatNoteBody("([18+24] x (3-1))", settings, convertUnitQuantity);
+  assert.equal(formatted, "[(18 + 24) x(3 - 1)]");
+  // 换形只是字形替换：求值结果与原文一致
+  assert.deepEqual(
+    evaluateNotebook(formatted).map((line) => line.raw),
+    ["84"],
+  );
+  // 单层括号保持 ()
+  assert.equal(formatNoteBody("(10 x 体重) + 3", settings, convertUnitQuantity), "(10 × 体重) + 3");
 });

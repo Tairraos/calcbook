@@ -1,6 +1,6 @@
 // 全文格式化：按用户的格式设置重排笔记里的算式写法。默认不自动执行，
 // 只在点击「格式化」时对整篇运行一次。
-import { normalizeMultiplication } from "./calculation.ts";
+import { normalizeMultiplication, restyleBrackets } from "./calculation.ts";
 import {
   enToZh,
   parseUnitAliases,
@@ -297,7 +297,8 @@ export function formatExpression(
     );
   });
 
-  return out.join("").replace(/ {2,}/g, " ").trim();
+  // 括号按嵌套层级收敛为 {[( )]}：最内层 ()，向外 []、{}（与计算器输入期自动换形同一约定）
+  return restyleBrackets(out.join("").replace(/ {2,}/g, " ").trim());
 }
 
 // 整行格式化：拆注释、格式化算式、按设置接回注释。

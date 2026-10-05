@@ -102,6 +102,56 @@ export function normalizeMultiplication(expression: string): string {
   return normalized;
 }
 
+// 括号按嵌套层级自动换形：最内层 ()，向外 []、{}（{[( )]}，最多 3 层）。
+// 计算器输入时实时应用，全文格式化把用户写法收敛到同一形态；
+// 求值前三种括号等价（normalize 统一成圆括号），换形不改语义。
+// 超过 3 层的写法没有定义形态（求值必报「括号嵌套层数越限」），原样返回。
+export function restyleBrackets(expression: string): string {
+  const chars = [...expression];
+  const depthOf = new Map<number, number>();
+  const stack: number[] = [];
+  let maxDepth = 0;
+  for (let index = 0; index < chars.length; index++) {
+    const character = chars[index];
+    if ("([{".includes(character)) {
+      const depth = stack.length + 1;
+      depthOf.set(index, depth);
+      if (depth > maxDepth) maxDepth = depth;
+      stack.push(index);
+    } else if (")]}".includes(character)) {
+      const open = stack.pop();
+      if (open !== undefined) depthOf.set(index, depthOf.get(open) as number);
+    }
+  }
+  if (maxDepth > 3) return expression;
+  // 从内向外数层级：最内层 0 → ()，1 → []，2 → {}（不成对的关括号按第 1 层处理）
+  const styles = ["()", "[]", "{}"];
+  let out = "";
+  for (let index = 0; index < chars.length; index++) {
+    const character = chars[index];
+    if ("([{".includes(character) || ")]}".includes(character)) {
+      const fromInner = maxDepth - (depthOf.get(index) ?? 1);
+      const style = styles[Math.min(Math.max(fromInner, 0), 2)];
+      out += "([{".includes(character) ? style[0] : style[1];
+    } else {
+      out += character;
+    }
+  }
+  return out;
+}
+
+// 括号嵌套层数：最多 3 层（{[()]}），超出报错。normalize 已把三种括号统一成圆括号。
+function checkBracketDepth(expression: string): void {
+  let depth = 0;
+  for (const character of expression) {
+    if (character === "(") {
+      if (++depth > 3) throw new Error("括号嵌套层数越限");
+    } else if (character === ")") {
+      depth--;
+    }
+  }
+}
+
 function normalize(source: string): string {
   let expression = source
     .replace(/[×✕]/g, "*")
@@ -463,6 +513,7 @@ export function calculate(
   });
   if (!expression) throw new Error("先输入一个算式");
   checkNumberWidth(expression);
+  checkBracketDepth(expression);
   const tree = math.parse(expression);
   // 行内单位 token（大小写/中文）+ 作用域变量携带的单位
   const seen = [...scanUnitTokens(source), ...validateTree(tree, scope)];

@@ -91,6 +91,26 @@ test("number width limit: 16 integer digits and 4 decimals, input and result err
   assert.equal(calc.ok, false);
   assert.equal(calc.ok ? "" : calc.error, "计算结果数字宽度超限");
 });
+test("bracket nesting beyond three levels is rejected with a named error", () => {
+  // 4 层嵌套：笔记行与计算器都报「括号嵌套层数越限」
+  for (const source of ["((((1 + 2))))", "(({[1]}))"]) {
+    const [line] = evaluateNotebook(source);
+    assert.equal(line.kind, "error", source);
+    assert.equal(line.error, "括号嵌套层数越限", source);
+  }
+  const calc = calculateInput("((((1))))");
+  assert.equal(calc.ok, false);
+  assert.equal(calc.ok ? "" : calc.error, "括号嵌套层数越限");
+  // 3 层以内正常（三种括号等价、兄弟括号不计深度）
+  assert.deepEqual(
+    evaluateNotebook("{[(1 + 2)]}").map((line) => line.raw),
+    ["3"],
+  );
+  assert.deepEqual(
+    evaluateNotebook("([18+24] x (3-1))").map((line) => line.raw),
+    ["84"],
+  );
+});
 test("assignment names conflicting with reserved words name the conflict", () => {
   for (const [source, category] of [
     ["月 = 12", "单位名"],

@@ -54,6 +54,29 @@ test("sign toggle preserves scientific notation and leading decimals", () => {
   assert.equal(overflow.result, null);
   assert.equal(overflow.error, "计算结果数字宽度超限");
 });
+test("brackets restyle by nesting depth and input guards block invalid expressions", () => {
+  // 用户约定：((8 + 2) × 3) × 4 输入时自动变成 [(8+2)×3]×4——外层随嵌套变 [] {}
+  const user = type(["(", "(", "8", "+", "2", ")", "×", "3", ")", "×", "4"]);
+  assert.equal(user.expression, "[(8+2)×3]×4");
+  assert.equal(type(["(", "(", "(", "1", "+", "2", ")", ")", ")"]).expression, "{[(1+2)]}");
+  assert.equal(type(["(", "(", "(", "1", "+", "2", ")", ")", ")", "×", "3", "="]).result, "9");
+  // 同层的兄弟括号保持 ()
+  assert.equal(type(["(", "8", "+", "2", ")", "(", "3"]).expression, "(8+2)(3");
+  assert.equal(type(["(", "8", "+", "2", ")", "(", "3", ")", ")"]).expression, "(8+2)(3)");
+  // 守卫：开括号不跟数字、关括号必须有未闭合的开括号且不能紧跟开括号/运算符、最多 3 层
+  assert.equal(type(["2", "("]).expression, "2");
+  assert.equal(type([")"]).expression, "");
+  assert.equal(type(["(", ")"]).expression, "(");
+  assert.equal(type(["2", "+", ")"]).expression, "2+");
+  assert.equal(type(["(", "+"]).expression, "(");
+  assert.equal(type(["(", "-", "3", ")"]).expression, "(-3)");
+  assert.equal(type(["(", "(", "(", "1", "+", "("]).expression, "{[(1+");
+  // 运算符不连续：末尾运算符被替换（含 -，负数用 ± 键）；% 只跟在数字后
+  assert.equal(type(["2", "+", "×"]).expression, "2×");
+  assert.equal(type(["2", "+", "-"]).expression, "2-");
+  assert.equal(type(["2", "+", "%"]).expression, "2+");
+  assert.equal(type(["(", "0", ".", "5", "%", ")"]).expression, "(0.5%)");
+});
 test("digit input is capped at 16 integer digits and 4 decimals", () => {
   // 整数到 16 位后再按数字无反应
   const full = type([..."9999999999999999"]);
