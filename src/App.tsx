@@ -29,7 +29,7 @@ import logoLight from "./assets/light.png";
 import { convertUnitQuantity, evaluateNotebook } from "./domain/calculation.ts";
 import { parseNoteBody, serializeNoteBody } from "./domain/format.ts";
 import type { FormatSettings } from "./domain/formatting.ts";
-import { formatNoteBody } from "./domain/formatting.ts";
+import { formatLine, formatNoteBody } from "./domain/formatting.ts";
 import {
   createNote,
   createScratchNote,
@@ -877,13 +877,17 @@ export default function App() {
     void emit(CALCULATOR_THEME_EVENT, workspace?.theme ?? "light").catch(() => {});
   }, [workspace?.theme]);
 
-  // 计算器「写入当前笔记」：经事件送达主窗，插入当前行之后。
-  const insertRef = useRef(insertExpression);
-  insertRef.current = insertExpression;
+  // 计算器「写入当前笔记」：经事件送达主窗，按格式化设置整理这一行后插入当前行之后
+  //（1.6.16 起；帮助弹窗的示例插入不经过这里，保持原样）。
+  const insertFromCalculatorRef = useRef<(expression: string) => void>(() => {});
+  insertFromCalculatorRef.current = (expression: string) => {
+    if (!workspace) return;
+    insertExpression(formatLine(expression, workspace.format, convertUnitQuantity));
+  };
   useEffect(() => {
     if (!isDesktopApp) return;
     const unlisten = listen<string>(CALCULATOR_INSERT_EVENT, (event) => {
-      insertRef.current(event.payload);
+      insertFromCalculatorRef.current(event.payload);
     });
     return () => {
       void unlisten.then((dispose) => dispose());
