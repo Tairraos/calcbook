@@ -275,11 +275,12 @@ function checkNumberWidth(expression: string): void {
 
 // 显示数值：小数最多 4 位（四舍五入），整数部分最长 16 位。
 // 千位分隔只作用于整数部分——4 位小数会被全串正则误切（666.6667 → 666.6,667）。
-// 舍入后整数部分超过 16 位（含进位到 17 位）直接报「数字宽度超限」，不用科学计数法。
+// 舍入后整数部分超过 16 位（含进位到 17 位）报「计算结果数字宽度超限」，
+// 与输入侧的「数字宽度超限」区分，不用科学计数法。
 function formatDisplayNumber(numeric: BigNumber | number, thousands = true): string {
   const decimal = isBigNumber(numeric) ? numeric : math.bignumber(numeric);
   const rounded = decimal.toDecimalPlaces(4);
-  if (rounded.abs().trunc().toFixed().length > 16) throw new Error("数字宽度超限");
+  if (rounded.abs().trunc().toFixed().length > 16) throw new Error("计算结果数字宽度超限");
   if (rounded.isZero()) return "0";
   const [intPart, decimalPart] = rounded.toFixed().split(".");
   const grouped = thousands ? intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",") : intPart;

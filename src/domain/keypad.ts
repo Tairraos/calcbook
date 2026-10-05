@@ -56,6 +56,13 @@ export function pressKeypad(state: KeypadState, key: string): KeypadState {
     if (key === "." && /\d*\.\d*$/.test(expression)) return state;
     if (key === "." && (!expression || /[+\-*/×÷(]$/.test(expression))) expression += "0";
     if (/^\d$/.test(key) && expression === "0") expression = "";
+    // 数字宽度封顶（1.6.11）：整数 16 位、小数 4 位——继续输入该数字超限时按键无反应。
+    // 只查正在输入的这一段（从上一运算符/括号之后），算式其余部分不参与。
+    if (/^[\d.]$/.test(key)) {
+      const segment = expression.split(/[+\-*/×÷()%]/).pop() ?? "";
+      const [integer = "", decimal = ""] = `${segment}${key}`.split(".");
+      if (integer.replace(/^0+(?=\d)/, "").length > 16 || decimal.length > 4) return state;
+    }
     expression += key;
   }
   return { ...state, expression, display: expression || "0", result: null, error: null };

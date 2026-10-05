@@ -49,8 +49,25 @@ test("sign toggle preserves scientific notation and leading decimals", () => {
     assert.equal(pressKeypad(state, "±").expression, toggled);
     assert.equal(pressKeypad(pressKeypad(state, "±"), "±").expression, expression);
   }
-  // 数字宽度上限（1.6.10）：1e20 是 21 位整数，等号后报「数字宽度超限」而非科学计数法结果
+  // 数字宽度上限（1.6.10）：1e20 是 21 位整数，等号后报「计算结果数字宽度超限」而非科学计数法结果
   const overflow = pressKeypad({ ...initialKeypad, expression: "1e20" }, "=");
   assert.equal(overflow.result, null);
-  assert.equal(overflow.error, "数字宽度超限");
+  assert.equal(overflow.error, "计算结果数字宽度超限");
+});
+test("digit input is capped at 16 integer digits and 4 decimals", () => {
+  // 整数到 16 位后再按数字无反应
+  const full = type([..."9999999999999999"]);
+  assert.equal(full.expression, "9999999999999999");
+  assert.equal(type([..."9999999999999999", "7"]).expression, "9999999999999999");
+  // 小数满 4 位后再按数字无反应
+  const decimal = type([..."0.1234"]);
+  assert.equal(decimal.expression, "0.1234");
+  assert.equal(type([..."0.1234", "5"]).expression, "0.1234");
+  // 运算符后是新的一段数字，可以继续输入
+  const next = type([..."9999999999999999", "+", "1"]);
+  assert.equal(next.expression, "9999999999999999+1");
+  // 前导零也计入小数位（与笔记侧字面规则一致）：0.0001 之后第 5 位小数被拦
+  assert.equal(type(["0", ".", "0", "0", "0", "1", "2"]).expression, "0.0001");
+  // 退格后可以继续输入
+  assert.equal(pressKeypad(full, "Backspace").expression, "999999999999999");
 });

@@ -70,9 +70,9 @@ test("calculator display rounds to four places and caps at sixteen integer digit
     assert.equal(result.display, display, source);
   }
 });
-test("number width limit: 16 integer digits and 4 decimals, beyond that the line errors", () => {
-  // 输入数字超宽：17 位整数、5 位小数；结果超宽（1e308 舍入后 309 位整数）
-  for (const source of ["12345678901234567", "0.12345", "1e308"]) {
+test("number width limit: 16 integer digits and 4 decimals, input and result errors differ", () => {
+  // 输入数字超宽：17 位整数、5 位小数 →「数字宽度超限」
+  for (const source of ["12345678901234567", "0.12345", "12.34567"]) {
     const result = calculateInput(source);
     assert.equal(result.ok, false, source);
     assert.equal(result.ok ? "" : result.error, "数字宽度超限", source);
@@ -80,16 +80,16 @@ test("number width limit: 16 integer digits and 4 decimals, beyond that the line
   // 上限内正常（16 位整数、4 位小数）
   assert.equal(calculateInput("9999999999999999").ok, true);
   assert.equal(calculateInput("0.1234").ok, true);
-  // 结果超宽：进位到 17 位整数、大幂结果
-  for (const source of ["9999999999999999 + 1", "2^60"]) {
+  // 结果超宽：进位到 17 位整数、大幂结果、超宽的 e 记法输入 →「计算结果数字宽度超限」
+  for (const source of ["9999999999999999 + 1", "2^60", "2^60 米", "1e308"]) {
     const [line] = evaluateNotebook(source);
     assert.equal(line.kind, "error", source);
-    assert.equal(line.error, "数字宽度超限", source);
+    assert.equal(line.error, "计算结果数字宽度超限", source);
   }
-  // 笔记里 5 位小数整行报错，错误在结果位置
-  const [line] = evaluateNotebook("12.34567");
-  assert.equal(line.kind, "error");
-  assert.equal(line.error, "数字宽度超限");
+  // 计算器同款文案
+  const calc = calculateInput("2^60");
+  assert.equal(calc.ok, false);
+  assert.equal(calc.ok ? "" : calc.error, "计算结果数字宽度超限");
 });
 test("assignment names conflicting with reserved words name the conflict", () => {
   for (const [source, category] of [
