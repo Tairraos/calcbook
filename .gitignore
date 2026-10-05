@@ -9,3 +9,4 @@ src-tauri/gen/
 artifacts/
 .calcbook-data/
 .zcode/
+.workbuddy/

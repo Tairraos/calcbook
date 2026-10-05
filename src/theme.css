@@ -24,33 +24,19 @@
   --scroll-thumb: #c4c9cf; /* 所有滚动条滑块：笔记列表、编辑器、弹窗、帮助面板（轨道透明） */
   --hover: #eceef0; /* 中性悬停底：笔记卡、图标按钮、tab、右键菜单项、帮助 tab 悬停 */
   --avatar: #eceef0; /* 工作区头像底色（当前界面已不使用，遗留） */
-  --key: #ffffff; /* 按键底：计算器数字键、次级按钮、便捷输入 ×/÷ 键 */
-  --key-hover: #eceef0; /* 按键悬停底色 */
-  --function-key: #f0f1f2; /* 计算器功能键（AC、括号、退格、±、%）底色 */
-  --calc-key-border: #e7e8ea; /* 计算器按键细边框：浅色主题给浅色键面一点轮廓 */
-  --calc-orange-border: rgba(180, 80, 0, 0.28); /* 计算器桔色键细边框（同色系勾边） */
-  --calc-orange-ink: #ffffff; /* 计算器桔色键（运算符/等号）上的符号颜色，两主题均为白 */
-  --calc-orange-gradient: linear-gradient(148deg, #fc9f2f 0%, #ed7907 100%); /* 计算器桔色键面 */
-  --calc-orange-hover: linear-gradient(
-    148deg,
-    #f28f1d 0%,
-    #de6c03 100%
-  ); /* 计算器桔色键悬停（稍微变暗） */
-  --calc-orange-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.4), 0 1px 0 0 rgba(224, 113, 5, 0.55),
-    0 2px 0 0 rgba(209, 104, 4, 0.55), 0 3px 0 0 rgba(193, 95, 3, 0.55), 0 4px 0 0 rgba(
-      178,
-      86,
-      2,
-      0.55
-    ),
-    0 4px 6px 0 rgba(150, 65, 0, 0.28); /* 计算器桔色键层叠厚边（半透明侧壁 + 落地影） */
-  --calc-key-shadow:
-    inset 0 1px 0 0 #ffffff, 0 1px 0 0 #ebebe9, 0 2px 0 0 #e2e2e0, 0 3px 0 0 #d7d7d5,
-    0 4px 0 0 #cbcbc9, 0 4px 6px 0 rgba(0, 0, 0, 0.1); /* 计算器数字键层叠厚边 */
-  --calc-function-shadow:
-    inset 0 1px 0 0 #f8f8f9, 0 1px 0 0 #dcdcdf, 0 2px 0 0 #d2d2d5, 0 3px 0 0 #c7c7ca,
-    0 4px 0 0 #bcbcbf, 0 4px 6px 0 rgba(0, 0, 0, 0.1); /* 计算器功能键层叠厚边 */
+  --key-bg: #f8f8f8; /* 按键底：计算器数字键、次级按钮、便捷输入 ×/÷ 键 */
+  --key-border: #cccccc; /* 计算器按键细边框：给浅色键面一点轮廓 */
+  --key-hover: #eeeeee; /* 按键悬停底色 */
+  --key-shadow: #cccccc; /* 计算器数字键/功能键的底部立体边颜色（2px 实边） */
+  --key-func-bg: #e0e0e0; /* 计算器功能键（AC、括号、退格、±、%）底色 */
+  --key-func-border: #cccccc; /* 计算器功能键边框：给浅色键面一点轮廓 */
+  --key-func-hover: #d8d8d8; /* 功能键悬停底色 */
+  --key-func-shadow: #cccccc; /* 计算器功能键的落地影颜色（2px 模糊层） */
+  --key-opt-ink: #ffffff; /* 计算器桔色键（运算符/等号）上的符号颜色，两主题均为白 */
+  --key-opt-bg: #ed7907; /* 计算器桔色键面 */
+  --key-opt-border: #d16c07; /* 计算器桔色键细边框（同色系勾边） */
+  --key-opt-hover: #de6c03; /* 计算器桔色键悬停（稍微变暗） */
+  --key-opt-shadow: #bbb; /* 计算器桔色键（运算符/等号）的底部立体边与落地影颜色 */
   --expression: #0a7fa5; /* 编辑器算式高亮：变量与表达式主色、帮助示例代码 */
   --number: #2e74a3; /* 编辑器数字着色 */
   --operator: #38607e; /* 编辑器运算符着色 */
@@ -88,33 +74,19 @@
   --scroll-thumb: #555860; /* 所有滚动条滑块：笔记列表、编辑器、弹窗、帮助面板（轨道透明） */
   --hover: #313338; /* 中性悬停底：笔记卡、图标按钮、tab、右键菜单项、帮助 tab 悬停 */
   --avatar: #34373d; /* 工作区头像底色（当前界面已不使用，遗留） */
-  --key: #303237; /* 按键底：计算器数字键、次级按钮、便捷输入 ×/÷ 键 */
-  --key-hover: #3b3e44; /* 按键悬停底色 */
-  --function-key: #2a2c31; /* 计算器功能键（AC、括号、退格、±、%）底色 */
-  --calc-key-border: transparent; /* 计算器按键细边框：深色主题键面自带明暗对比，不加边框 */
-  --calc-orange-border: transparent; /* 计算器桔色键细边框（深色主题不加） */
-  --calc-orange-ink: #ffffff; /* 计算器桔色键（运算符/等号）上的符号颜色，两主题均为白 */
-  --calc-orange-gradient: linear-gradient(148deg, #ffa93d 0%, #ef7f08 100%); /* 计算器桔色键面 */
-  --calc-orange-hover: linear-gradient(
-    148deg,
-    #ffb350 0%,
-    #f68715 100%
-  ); /* 计算器桔色键悬停（稍微变亮） */
-  --calc-orange-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.35), 0 1px 0 0 rgba(221, 114, 5, 0.55),
-    0 2px 0 0 rgba(205, 104, 4, 0.55), 0 3px 0 0 rgba(189, 94, 3, 0.55), 0 4px 0 0 rgba(
-      173,
-      84,
-      2,
-      0.55
-    ),
-    0 4px 6px 0 rgba(0, 0, 0, 0.32); /* 计算器桔色键层叠厚边（半透明侧壁 + 落地影） */
-  --calc-key-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.08), 0 1px 0 0 #232529, 0 2px 0 0 #1e2024,
-    0 3px 0 0 #191b1e, 0 4px 0 0 #141619, 0 4px 6px 0 rgba(0, 0, 0, 0.5); /* 计算器数字键层叠厚边 */
-  --calc-function-shadow:
-    inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 1px 0 0 #1f2125, 0 2px 0 0 #1a1c20,
-    0 3px 0 0 #15171a, 0 4px 0 0 #101215, 0 4px 6px 0 rgba(0, 0, 0, 0.5); /* 计算器功能键层叠厚边 */
+  --key-bg: #303237; /* 按键底：计算器数字键、次级按钮、便捷输入 ×/÷ 键 */
+  --key-border: #3e3e3e; /* 计算器按键细边框：深色主题用更亮的灰勾出键面轮廓 */
+  --key-hover: #404040; /* 按键悬停底色 */
+  --key-shadow: #111111; /* 计算器数字键/功能键的底部立体边颜色（2px 实边） */
+  --key-func-bg: #404040; /* 计算器功能键（AC、括号、退格、±、%）底色 */
+  --key-func-border: #585858; /* 计算器功能键边框：用更亮的灰勾出轮廓 */
+  --key-func-hover: #505050; /* 功能键悬停底色 */
+  --key-func-shadow: #111111; /* 计算器功能键的落地影颜色（2px 模糊层） */
+  --key-opt-ink: #ffffff; /* 计算器桔色键（运算符/等号）上的符号颜色，两主题均为白 */
+  --key-opt-bg: #d26d08; /* 计算器桔色键面 */
+  --key-opt-border: #cc8e5b; /* 计算器桔色键细边框（同色系勾边） */
+  --key-opt-hover: #f47905; /* 计算器桔色键悬停（稍微变亮） */
+  --key-opt-shadow: #111111; /* 计算器桔色键（运算符/等号）的底部立体边与落地影颜色 */
   --expression: #6cc4ed; /* 编辑器算式高亮：变量与表达式主色、帮助示例代码 */
   --number: #e3e7e9; /* 编辑器数字着色 */
   --operator: #e3e7e9; /* 编辑器运算符着色 */

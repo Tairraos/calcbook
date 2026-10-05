@@ -636,7 +636,7 @@ kbd {
   justify-content: center;
   border: 1px solid var(--border);
   border-radius: 4px;
-  background: var(--key);
+  background: var(--key-bg);
   color: var(--ink);
   font-size: 12px;
   line-height: 1;
@@ -1216,51 +1216,67 @@ kbd {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 7px;
 }
-.calc-key {
+/* 阴影立体按键（key-num/key-func/key-opt/key-equ 四类）：键面与边框颜色全部来自
+   theme.css 的 --key-* 变量，投影结构固定为「底部 2px 实边 + 2px 模糊落地影」。 */
+.key-num {
   display: grid;
   place-items: center;
-  border: 1px solid var(--calc-key-border); /* 浅色主题浅灰细边给键面轮廓；深色主题透明 */
-  background: var(--key);
+  border: 1px solid var(--key-border); /* 细边框勾出键面轮廓（深浅主题各有对应色） */
+  background: var(--key-bg);
   border-radius: 10px;
   height: 41px;
   font-size: 17px;
   font-weight: 450;
-  box-shadow: var(--calc-key-shadow);
+  box-shadow:
+    0 2px 0 0 var(--key-shadow),
+    0 3px 2px 0 var(--key-shadow);
   transition: 0.05s ease;
 }
 /* 悬停只变色（浅色更暗、深色更亮，随 --key-hover 主题值）。 */
-.calc-key:hover {
+.key-num:hover {
   background: var(--key-hover);
 }
 /* is-pressed 是键盘按下态（keydown 加、keyup 撤）：与鼠标按下同款——
-   整体下沉 2px 沉进自己的层叠厚边，投影原样保留。 */
-.calc-key:active,
-.calc-key.is-pressed {
+   整体下沉 2px 沉进自己的阴影，投影原样保留。 */
+.key-num:active,
+.key-num.is-pressed {
   translate: 0 2px;
 }
-.key-function {
+.key-func {
   color: var(--muted);
   font-size: 14px;
-  background: var(--function-key);
-  box-shadow: var(--calc-function-shadow);
+  background: var(--key-func-bg);
+  border: 1px solid var(--key-func-border);
+  /* 实边与数字键同色，落地影用功能键自己的颜色 */
+  box-shadow:
+    0 2px 0 0 var(--key-shadow),
+    0 3px 2px 0 var(--key-func-shadow);
 }
-.key-operator {
-  color: var(--calc-orange-ink);
-  background: var(--calc-orange-gradient);
-  border-color: var(--calc-orange-border);
+.key-func:hover {
+  background: var(--key-func-hover);
+}
+.key-opt {
+  color: var(--key-opt-ink);
+  background: var(--key-opt-bg);
+  border-color: var(--key-opt-border);
   font-size: 19px;
-  box-shadow: var(--calc-orange-shadow);
+  box-shadow:
+    0 2px 0 0 var(--key-opt-shadow),
+    0 3px 2px 0 var(--key-opt-shadow);
 }
-.key-equals {
+.key-equ {
   grid-column: span 3;
-  background: var(--calc-orange-gradient);
-  color: var(--calc-orange-ink);
-  border-color: var(--calc-orange-border);
+  color: var(--key-opt-ink);
+  background: var(--key-opt-bg);
+  border-color: var(--key-opt-border);
   font-size: 22px;
-  box-shadow: var(--calc-orange-shadow);
+  box-shadow:
+    0 2px 0 0 var(--key-opt-shadow),
+    0 3px 2px 0 var(--key-opt-shadow);
 }
-.key-equals:hover {
-  background: var(--calc-orange-hover);
+.key-equ:hover,
+.key-opt:hover {
+  background: var(--key-opt-hover);
 }
 /* 高度固定：清空按钮只在有历史时渲染，若行高随内容变化标题会上下移动。 */
 .calc-history-heading {
@@ -1647,7 +1663,7 @@ kbd {
   padding: 7px 10px;
   border: 1px solid var(--strong-border);
   border-radius: 6px;
-  background: var(--key);
+  background: var(--key-bg);
   color: var(--ink);
   font-size: 12px;
   white-space: nowrap;

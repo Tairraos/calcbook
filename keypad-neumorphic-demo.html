@@ -1,0 +1,368 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>计算器按键凹凸效果 demo</title>
+<style>
+  /* ============================================================
+     计算器按键 demo：阴影立体按键
+     取参考片段的三个核心：多层堆叠 box-shadow（立体侧壁）、
+     按下 translate 下沉、transition: 0.05s ease。
+     其余全部沿用本页现状：底色渐变、悬停只变色（浅色更暗/深色更亮）、
+     桔色运算符与等号、41px 键高 / 7px 间距 / 字号 17·14·19·22、等号跨三列。
+     ============================================================ */
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 18px;
+    padding: 28px 16px 40px;
+    font-family: -apple-system, "SF Pro Text", "PingFang SC", system-ui, sans-serif;
+    background: #e8e8e6;
+    color: #2f3439;
+  }
+  header { text-align: center; }
+  header h1 { font-size: 17px; margin: 0 0 6px; font-weight: 600; }
+  header p { font-size: 12px; color: #525c68; margin: 0; }
+  .controls {
+    display: flex; align-items: center; gap: 10px;
+    font-size: 12px; color: #525c68;
+    background: #f2f2f0; border-radius: 10px; padding: 8px 14px;
+  }
+  .controls input[type="range"] { width: 140px; accent-color: #337511; }
+  .panels { display: flex; gap: 26px; flex-wrap: wrap; justify-content: center; }
+  .panel {
+    width: 300px;
+    border-radius: 14px;
+    padding: 16px 14px 22px;
+  }
+  .panel h2 { font-size: 12px; font-weight: 500; margin: 0 0 12px; text-align: center; }
+  /* ---- 浅色面板：对应 app 纸白主题的计算器底色 ---- */
+  .panel.light { background: #f7f7f7; color: #2f3439; }
+  .panel.light h2 { color: #525c68; }
+  /* ---- 深色面板：对应 app 午夜主题 ---- */
+  .panel.dark { background: #222327; color: #e3e7e9; }
+  .panel.dark h2 { color: #a0a3aa; }
+
+  /* 屏幕区（仅展示按键效果用，样式随面板） */
+  .screen {
+    height: 84px; border-radius: 10px; margin-bottom: 14px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    padding: 8px 12px 6px;
+  }
+  .light .screen { background: #ffffff; box-shadow: inset 2px 2px 5px rgba(0,0,0,0.06), inset -2px -2px 5px rgba(255,255,255,0.9); }
+  .dark .screen { background: #212226; box-shadow: inset 2px 2px 5px rgba(0,0,0,0.5), inset -2px -2px 5px rgba(255,255,255,0.03); }
+  .screen .hint { font-size: 11px; }
+  .light .screen .hint { color: #337511; }
+  .dark .screen .hint { color: #8cd32d; }
+  .screen .value { font-size: 26px; text-align: right; font-variant-numeric: tabular-nums; min-height: 32px; }
+
+  /* ---- 键盘网格：与 app 相同的 4 列 / 7px 间距 ---- */
+  .keypad { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 7px; }
+
+  .key {
+    height: 41px;
+    border: 1px solid transparent;       /* 占位保持尺寸，观感交给厚边 */
+    border-radius: var(--radius, 7px);   /* 可调圆角，默认与 app 一致 */
+    font-size: 17px;
+    font-weight: 450;
+    font-variant-numeric: tabular-nums;
+    display: grid; place-items: center;
+    cursor: pointer;
+    user-select: none;
+    -webkit-user-select: none;
+    /* 参考片段：极短的过渡，按下下沉立刻到位 */
+    transition: 0.05s ease;
+    font-family: inherit;
+  }
+  /* 参考片段：按下（鼠标或键盘 is-pressed）整体下沉 2px，沉进自己的厚边里；
+     box-shadow 原样保留，侧壁仍在，视觉即「按进去」 */
+  .key:active,
+  .key.is-pressed {
+    translate: 0 2px;
+  }
+
+  /* ============ 浅色主题 ============ */
+  .light .key {
+    color: #2f3439;
+    background: linear-gradient(148deg, #ffffff 0%, #f4f4f2 100%);
+    /* 阴影：由键面色调逐层加深，最后一层带模糊作落地影 */
+    box-shadow:
+      inset 0 1px 0 0 #ffffff,
+      0 1px 0 0 #ebebe9,
+      0 2px 0 0 #e2e2e0,
+      0 3px 0 0 #d7d7d5,
+      0 4px 0 0 #cbcbc9,
+      0 4px 6px 0 rgba(0, 0, 0, 0.10);
+  }
+  /* 悬停：只变颜色——浅色主题稍微变暗 */
+  .light .key:hover {
+    background: linear-gradient(148deg, #f5f5f3 0%, #eaeae8 100%);
+  }
+
+  .light .key-func {
+    font-size: 14px; color: #525c68;
+    background: linear-gradient(148deg, #f4f5f6 0%, #eaeaec 100%);
+    box-shadow:
+      inset 0 1px 0 0 #f8f8f9,
+      0 1px 0 0 #dcdcdf,
+      0 2px 0 0 #d2d2d5,
+      0 3px 0 0 #c7c7ca,
+      0 4px 0 0 #bcbcbf,
+      0 4px 6px 0 rgba(0, 0, 0, 0.10);
+  }
+  .light .key-func:hover { background: linear-gradient(148deg, #eceef0 0%, #e1e2e4 100%); }
+
+  /* 运算符键：参考图的桔色，白色符号，厚边用深桔逐层压暗 */
+  .light .key-opt {
+    font-size: 19px; color: #ffffff;
+    background: linear-gradient(148deg, #fb9d2c 0%, #ec7708 100%);
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.4),
+      0 1px 0 0 #e07105,
+      0 2px 0 0 #d16804,
+      0 3px 0 0 #c15f03,
+      0 4px 0 0 #b25602,
+      0 4px 6px 0 rgba(150, 65, 0, 0.4);
+  }
+  .light .key-opt:hover { background: linear-gradient(148deg, #f28f1d 0%, #de6c03 100%); }
+
+  /* 等号键：同款桔色，厚边相同 */
+  .light .key-equ {
+    grid-column: span 3;
+    font-size: 22px; color: #ffffff;
+    background: linear-gradient(148deg, #ffa43b 0%, #ee7c07 100%);
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.4),
+      0 1px 0 0 #e07105,
+      0 2px 0 0 #d16804,
+      0 3px 0 0 #c15f03,
+      0 4px 0 0 #b25602,
+      0 4px 6px 0 rgba(150, 65, 0, 0.4);
+  }
+  .light .key-equ:hover { background: linear-gradient(148deg, #f5941f 0%, #e06e03 100%); }
+
+  /* ============ 深色主题 ============ */
+  .dark .key {
+    color: #e3e7e9;
+    background: linear-gradient(148deg, #35373d 0%, #2a2c31 100%);
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.08),
+      0 1px 0 0 #232529,
+      0 2px 0 0 #1e2024,
+      0 3px 0 0 #191b1e,
+      0 4px 0 0 #141619,
+      0 4px 6px 0 rgba(0, 0, 0, 0.5);
+  }
+  /* 悬停：只变颜色——深色主题稍微变亮 */
+  .dark .key:hover {
+    background: linear-gradient(148deg, #3e4148 0%, #33353b 100%);
+  }
+
+  .dark .key-func {
+    font-size: 14px; color: #a0a3aa;
+    background: linear-gradient(148deg, #2d2f35 0%, #26282d 100%);
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.05),
+      0 1px 0 0 #1f2125,
+      0 2px 0 0 #1a1c20,
+      0 3px 0 0 #15171a,
+      0 4px 0 0 #101215,
+      0 4px 6px 0 rgba(0, 0, 0, 0.5);
+  }
+  .dark .key-func:hover { background: linear-gradient(148deg, #34363d 0%, #2c2e34 100%); }
+
+  .dark .key-opt {
+    font-size: 19px; color: #ffffff;
+    background: linear-gradient(148deg, #ffa43b 0%, #ee7c07 100%);
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.35),
+      0 1px 0 0 #dd7205,
+      0 2px 0 0 #cd6804,
+      0 3px 0 0 #bd5e03,
+      0 4px 0 0 #ad5402,
+      0 4px 6px 0 rgba(0, 0, 0, 0.45);
+  }
+  .dark .key-opt:hover { background: linear-gradient(148deg, #ffb350 0%, #f68715 100%); }
+
+  .dark .key-equ {
+    grid-column: span 3;
+    font-size: 22px; color: #ffffff;
+    background: linear-gradient(148deg, #ffab45 0%, #f2820e 100%);
+    box-shadow:
+      inset 0 1px 0 0 rgba(255, 255, 255, 0.35),
+      0 1px 0 0 #dd7205,
+      0 2px 0 0 #cd6804,
+      0 3px 0 0 #bd5e03,
+      0 4px 0 0 #ad5402,
+      0 4px 6px 0 rgba(0, 0, 0, 0.45);
+  }
+  .dark .key-equ:hover { background: linear-gradient(148deg, #ffb95c 0%, #f68c18 100%); }
+
+  footer { font-size: 11px; color: #525c68; text-align: center; line-height: 1.7; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>计算器按键 · 凹凸效果 demo</h1>
+    <p>尺寸/间距/字号与现版计算器一致（41px 高 · 7px 间距 · 等号跨三列），只换光影。</p>
+  </header>
+
+  <div class="controls">
+    <label for="radius">圆角</label>
+    <input id="radius" type="range" min="6" max="20" step="1" value="7" />
+    <span id="radius-value">7px（现版）</span>
+  </div>
+
+  <div class="panels">
+    <section class="panel light" aria-label="浅色主题预览">
+      <h2>纸白 · light</h2>
+      <div class="screen">
+        <span class="hint" id="hint-light">随手算一算</span>
+        <span class="value" id="display-light">0</span>
+      </div>
+      <div class="keypad" data-panel="light">
+        <button type="button" class="key key-func" data-label="AC">AC</button>
+        <button type="button" class="key key-func">(</button>
+        <button type="button" class="key key-func">)</button>
+        <button type="button" class="key key-func" data-label="退格">⌫</button>
+        <button type="button" class="key">7</button>
+        <button type="button" class="key">8</button>
+        <button type="button" class="key">9</button>
+        <button type="button" class="key key-opt">÷</button>
+        <button type="button" class="key">4</button>
+        <button type="button" class="key">5</button>
+        <button type="button" class="key">6</button>
+        <button type="button" class="key key-opt">×</button>
+        <button type="button" class="key">1</button>
+        <button type="button" class="key">2</button>
+        <button type="button" class="key">3</button>
+        <button type="button" class="key key-opt">−</button>
+        <button type="button" class="key key-func">±</button>
+        <button type="button" class="key">0</button>
+        <button type="button" class="key">.</button>
+        <button type="button" class="key key-opt">+</button>
+        <button type="button" class="key key-func">%</button>
+        <button type="button" class="key key-equ">=</button>
+      </div>
+    </section>
+
+    <section class="panel dark" aria-label="深色主题预览">
+      <h2>午夜 · dark</h2>
+      <div class="screen">
+        <span class="hint" id="hint-dark">随手算一算</span>
+        <span class="value" id="display-dark">0</span>
+      </div>
+      <div class="keypad" data-panel="dark">
+        <button type="button" class="key key-func" data-label="AC">AC</button>
+        <button type="button" class="key key-func">(</button>
+        <button type="button" class="key key-func">)</button>
+        <button type="button" class="key key-func" data-label="退格">⌫</button>
+        <button type="button" class="key">7</button>
+        <button type="button" class="key">8</button>
+        <button type="button" class="key">9</button>
+        <button type="button" class="key key-opt">÷</button>
+        <button type="button" class="key">4</button>
+        <button type="button" class="key">5</button>
+        <button type="button" class="key">6</button>
+        <button type="button" class="key key-opt">×</button>
+        <button type="button" class="key">1</button>
+        <button type="button" class="key">2</button>
+        <button type="button" class="key">3</button>
+        <button type="button" class="key key-opt">−</button>
+        <button type="button" class="key key-func">±</button>
+        <button type="button" class="key">0</button>
+        <button type="button" class="key">.</button>
+        <button type="button" class="key key-opt">+</button>
+        <button type="button" class="key key-func">%</button>
+        <button type="button" class="key key-equ">=</button>
+      </div>
+    </section>
+  </div>
+
+  <footer>
+    悬停只变色（浅色更暗、深色更亮）；鼠标按下 / 键盘按住任意键下沉 2px，沉进自己的厚边。<br />
+    圆角滑杆可对比 7px（现版）与更圆润的效果。本文件仅作演示，不参与构建，也未提交。
+  </footer>
+
+<script>
+  // 与 app 同款交互：pointerdown/keydown 加 is-pressed（下沉态），pointerup/keyup 撤。
+  const expression = { light: "0", dark: "0" };
+
+  function pressedKeys() { return document.querySelectorAll(".key.is-pressed"); }
+
+  document.querySelectorAll(".keypad").forEach((pad) => {
+    const panel = pad.dataset.panel;
+    const display = document.getElementById("display-" + panel);
+    const hint = document.getElementById("hint-" + panel);
+
+    pad.addEventListener("pointerdown", (event) => {
+      const key = event.target.closest(".key");
+      if (!key) return;
+      key.classList.add("is-pressed");
+    });
+    const release = () => {
+      pressedKeys().forEach((key) => {
+      key.classList.remove("is-pressed");
+    });
+    };
+    pad.addEventListener("pointerup", release);
+    pad.addEventListener("pointerleave", release);
+
+    pad.addEventListener("click", (event) => {
+      const key = event.target.closest(".key");
+      if (!key) return;
+      const label = key.dataset.label ?? key.textContent.trim();
+      if (label === "AC") {
+        expression[panel] = "0";
+        hint.textContent = "随手算一算";
+      } else if (label === "退格") {
+        expression[panel] = expression[panel].length > 1 ? expression[panel].slice(0, -1) : "0";
+      } else if (label !== "=") {
+        expression[panel] = expression[panel] === "0" && /[0-9]/.test(label) ? label : expression[panel] + label;
+      }
+      display.textContent = expression[panel];
+      hint.textContent = "刚按下：" + label;
+    });
+  });
+
+  // 键盘接管演示：数字、四则、回车（=）、C（AC）、退格；两块面板同时反馈。
+  const keyMap = {
+    Enter: "=", "=": "=", "+": "+", "-": "−", "*": "×", "/": "÷",
+    "0": "0", "1": "1", "2": "2", "3": "3", "4": "4", "5": "5",
+    "6": "6", "7": "7", "8": "8", "9": "9", ".": ".",
+    Backspace: "退格", Escape: "AC", c: "AC", C: "AC",
+  };
+  let heldKey = null;
+  window.addEventListener("keydown", (event) => {
+    const label = keyMap[event.key];
+    if (!label || event.metaKey || event.ctrlKey || event.altKey || heldKey) return;
+    event.preventDefault();
+    heldKey = label;
+    document.querySelectorAll(".keypad").forEach((pad) => {
+      [...pad.querySelectorAll(".key")].find((key) => (key.dataset.label ?? key.textContent.trim()) === label)
+        ?.classList.add("is-pressed");
+    });
+  });
+  window.addEventListener("keyup", (event) => {
+    if (keyMap[event.key] !== heldKey) return;
+    heldKey = null;
+    pressedKeys().forEach((key) => {
+      key.classList.remove("is-pressed");
+    });
+  });
+
+  // 圆角滑杆：只改形状变量，不动尺寸。
+  const radius = document.getElementById("radius");
+  const radiusValue = document.getElementById("radius-value");
+  radius.addEventListener("input", () => {
+    document.documentElement.style.setProperty("--radius", radius.value + "px");
+    radiusValue.textContent = radius.value + "px" + (radius.value === "7" ? "（现版）" : "");
+  });
+</script>
+</body>
+</html>

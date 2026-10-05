@@ -297,7 +297,7 @@ export function CalculatorWindow() {
                 key={key}
                 type="button"
                 aria-label={keyLabels[key] ?? key}
-                className={`calc-key ${key === "=" ? "key-equals" : ""} ${/[÷×+-]/.test(key) ? "key-operator" : ""} ${["AC", "(", ")", "Backspace", "±", "%"].includes(key) ? "key-function" : ""} ${key === pressedKey ? "is-pressed" : ""}`}
+                className={`key-num ${key === "=" ? "key-equ" : ""} ${/[÷×+-]/.test(key) ? "key-opt" : ""} ${["AC", "(", ")", "Backspace", "±", "%"].includes(key) ? "key-func" : ""} ${key === pressedKey ? "is-pressed" : ""}`}
                 onPointerDown={(event) => {
                   if (event.button === 0) {
                     event.preventDefault();
