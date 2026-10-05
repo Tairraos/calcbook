@@ -27,16 +27,34 @@ function unclosedDepth(expression: string): number {
   return depth;
 }
 
+// 无效括号（1.6.15）：括号里只有纯数字的括号（如 2×(8)、嵌套的 2×((8))）不影响求值，
+// 等号时逐层删掉再计算，历史与「插入笔记」存删除后的算式。
+// 带负号的 (-8) 与百分号 (50%) 保留（前者括号有区分作用，后者剥离会改变
+// mathjs 对百分比与加减号的解析路径导致报错）；输入守卫保证数字不与括号直接粘连，
+// 删除不会产生 5(8)→58 这类并排。
+function stripNumberOnlyBrackets(source: string): string {
+  let current = source;
+  for (;;) {
+    const next = current.replace(/[([{]([^([{)\]}]+)[)\]}]/g, (pair, content: string) =>
+      /^\d+(?:\.\d+)?$/.test(content) ? content : pair,
+    );
+    if (next === current) return next;
+    current = next;
+  }
+}
+
 export function pressKeypad(state: KeypadState, key: string): KeypadState {
   if (key === "AC" || key === "Escape") return { ...initialKeypad, history: state.history };
   if (key === "=" || key === "Enter") {
     if (!state.expression || state.result !== null) return state;
-    // 容错（1.6.13）：等号时先剥掉末尾悬挂的运算符，再自动补齐未闭合的关括号；
-    // 补整后仍是错误表达式的，显示具体错误（结果位置不出现数值）。
+    // 容错（1.6.13/1.6.14/1.6.15）：等号时先剥掉末尾悬挂的运算符，再自动补齐未闭合的
+    // 关括号，然后删除括号里只有数字的无效括号；补整/删除后仍是错误表达式的，
+    // 显示具体错误（结果位置不出现数值）。历史存最终算式。
     let source = state.expression;
     while (source.length > 1 && /[+\-*/×÷]$/.test(source)) source = source.slice(0, -1);
     const missing = unclosedDepth(source);
     if (missing > 0) source = restyleBrackets(source + ")".repeat(missing));
+    source = stripNumberOnlyBrackets(source);
     const outcome = calculateInput(source);
     if (!outcome.ok) return { ...state, error: outcome.error };
     // 算式框、续算基值与历史条目一律用不带千分位逗号的同值（1.6.14）：

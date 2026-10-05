@@ -94,6 +94,22 @@ test("expression after equals carries no thousands separators", () => {
   assert.equal(big.expression, "9999999999999999");
   assert.equal(big.display, "9,999,999,999,999,999");
 });
+test("equals strips number-only bracket pairs and stores the stripped expression", () => {
+  // 括号里只有数字是无效括号：等号时删除再算，历史存删除后的算式
+  const stripped = type(["2", "×", "(", "8", ")", "="]);
+  assert.equal(stripped.result, "16");
+  assert.equal(stripped.history[0].expression, "2×8");
+  // 嵌套的纯数字括号逐层剥掉
+  const nested = type(["2", "×", "(", "(", "8", ")", ")", "="]);
+  assert.equal(nested.history[0].expression, "2×8");
+  assert.equal(type(["(", "8", ")", "×", "(", "9", ")", "="]).history[0].expression, "8×9");
+  // 与补齐联动：2×(8 = → 先补关括号再剥除
+  assert.equal(type(["2", "×", "(", "8", "="]).history[0].expression, "2×8");
+  // 含运算符的括号保留；(50%) 与带负号的 (-8) 也保留（剥离会改变求值路径/语义）
+  assert.equal(type(["(", "1", "+", "2", ")", "×", "3", "="]).history[0].expression, "(1+2)×3");
+  assert.equal(type(["(", "5", "0", "%", ")", "+", "1", "="]).history[0].expression, "(50%)+1");
+  assert.equal(type(["(", "-", "8", ")", "="]).history[0].expression, "(-8)");
+});
 test("input tolerance on equals: auto-close brackets and strip dangling operators", () => {
   // 有开括号没关括号：等号自动补齐关括号后再算
   const closed = type(["(", "8", "+", "2", "="]);
