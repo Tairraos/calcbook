@@ -288,6 +288,16 @@ export function Editor({
               >
                 ÷
               </button>
+              <button
+                type="button"
+                className="quick-insert-key"
+                title="插入千分号 ‰"
+                aria-label="插入千分号"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => insertSymbol("‰")}
+              >
+                ‰
+              </button>
               <span aria-hidden="true">）</span>
             </span>
           )}

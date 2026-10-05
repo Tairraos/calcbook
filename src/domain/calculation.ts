@@ -152,6 +152,17 @@ function checkBracketDepth(expression: string): void {
   }
 }
 
+// 百分号/千分号相加减按数值（1% + 5% = 0.06）：mathjs 无法把作为左操作数的 % 脱糖
+//（报「暂不支持这个运算符」），两侧都转绝对值。仅当左侧百分号是完整操作数
+//（表达式开头或开括号后）时生效，不影响 200 + 10% + 10% 这类写法的既有结果。
+function resolvePercentPairs(expression: string): string {
+  return expression.replace(
+    /(^|\()\s*(-?\d+(?:\.\d+)?)(%|‰)\s*([+-])\s*(\d+(?:\.\d+)?)(%|‰)/g,
+    (_, prefix, a, signA, op, b, signB) =>
+      `${prefix}(${a}${signA === "‰" ? "/1000" : "/100"}) ${op} (${b}${signB === "‰" ? "/1000" : "/100"})`,
+  );
+}
+
 function normalize(source: string): string {
   let expression = source
     .replace(/[×✕]/g, "*")
@@ -189,6 +200,8 @@ function normalize(source: string): string {
           ? `(${base}) ${op} (${amount}/10)%`
           : `(${base}) ${op} ${amount}%`;
   }
+  // 百分号/千分号相加减按数值（在 ‰ 短语之后、通用 ‰ 换写之前，两者都还是字面后缀）
+  expression = resolvePercentPairs(expression);
   // 千分号（1.6.17）：‰ 按千分之一参与——数字后缀换写成百分号（10‰ ≡ 1%，相对语义与 % 一致）；
   // 变量后缀按数值处理（x‰ → (x/1000)）。百分比变量本身已带 ‰ 信息（千分率 = 10‰ 存 0.01）。
   expression = expression.replace(/(\d+(?:\.\d+)?)‰/g, "($1/10)%");
@@ -515,10 +528,12 @@ export function calculate(
   percentages = new Set<string>(),
 ) {
   if (source.length > 1000) throw new Error("单行算式最多 1000 个字符");
-  const expression = normalize(source.trim()).replace(/[\p{L}_][\p{L}\p{N}_]*/gu, (name) => {
-    const value = scope.get(name);
-    return percentages.has(name) && isBigNumber(value) ? `${value.times(100).toString()}%` : name;
-  });
+  const expression = resolvePercentPairs(
+    normalize(source.trim()).replace(/[\p{L}_][\p{L}\p{N}_]*/gu, (name) => {
+      const value = scope.get(name);
+      return percentages.has(name) && isBigNumber(value) ? `${value.times(100).toString()}%` : name;
+    }),
+  );
   if (!expression) throw new Error("先输入一个算式");
   checkNumberWidth(expression);
   checkBracketDepth(expression);

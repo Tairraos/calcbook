@@ -230,5 +230,10 @@
     "name": "per-mille",
     "source": "200 + 10‰\n200 - 10‰\n200 × 10‰\n50‰\n20‰ of 150\n10‰ on 200\n千分率 = 10‰\n200 - 千分率",
     "expected": ["202", "198", "2", "0.05", "3", "202", "0.01", "198"]
+  },
+  {
+    "name": "percent and per-mille add as values when the left operand is a bare percent",
+    "source": "1% + 5%\n5% - 1%\n1‰ + 5‰\n1% + 5‰\n折扣 = 10%\n折扣 + 5%",
+    "expected": ["0.06", "0.04", "0.006", "0.015", "0.1", "0.15"]
   }
 ]
