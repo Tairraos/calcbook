@@ -77,6 +77,23 @@ test("brackets restyle by nesting depth and input guards block invalid expressio
   assert.equal(type(["2", "+", "%"]).expression, "2+");
   assert.equal(type(["(", "0", ".", "5", "%", ")"]).expression, "(0.5%)");
 });
+test("expression after equals carries no thousands separators", () => {
+  // 结果大字仍带千分位；算式框、续算基值与历史条目是同值的纯数字形态
+  const state = type([..."3999", "="]);
+  assert.equal(state.display, "3,999");
+  assert.equal(state.expression, "3999");
+  assert.equal(state.result, "3999");
+  assert.equal(state.history[0].result, "3999");
+  // ± 在纯数字形态上正常翻转，不再产出 3,(-999) 这类坏算式
+  const toggled = pressKeypad(state, "±");
+  assert.equal(toggled.expression, "-3999");
+  assert.equal(pressKeypad(toggled, "=").result, "-3999");
+  // 续算与 16 位结果同样不带逗号
+  assert.equal(pressKeypad(state, "+").expression, "3999+");
+  const big = type([..."9999999999999999", "="]);
+  assert.equal(big.expression, "9999999999999999");
+  assert.equal(big.display, "9,999,999,999,999,999");
+});
 test("input tolerance on equals: auto-close brackets and strip dangling operators", () => {
   // 有开括号没关括号：等号自动补齐关括号后再算
   const closed = type(["(", "8", "+", "2", "="]);

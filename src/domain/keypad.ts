@@ -39,15 +39,19 @@ export function pressKeypad(state: KeypadState, key: string): KeypadState {
     if (missing > 0) source = restyleBrackets(source + ")".repeat(missing));
     const outcome = calculateInput(source);
     if (!outcome.ok) return { ...state, error: outcome.error };
+    // 算式框、续算基值与历史条目一律用不带千分位逗号的同值（1.6.14）：
+    // ± / 退格 / 宽度检查都按纯数字处理——在带逗号的显示值上按 ± 会产出 3,(-999) 这类坏算式。
+    // 结果大字（display）仍按显示约定带千分位。
+    const plain = outcome.display.replace(/,/g, "");
     return {
       ...state,
       // 等号后算式框与结果列同时变成结果值；续算、退格都基于显示精度。
-      expression: outcome.display,
-      result: outcome.display,
+      expression: plain,
+      result: plain,
       display: outcome.display,
       error: null,
       history: [
-        { expression: source, result: outcome.display },
+        { expression: source, result: plain },
         ...state.history.filter((item) => item.expression !== source),
       ].slice(0, 20),
     };
