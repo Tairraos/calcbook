@@ -1,6 +1,6 @@
 // 全文格式化：按用户的格式设置重排笔记里的算式写法。默认不自动执行，
 // 只在点击「格式化」时对整篇运行一次。
-import { normalizeMultiplication, restyleBrackets } from "./calculation.ts";
+import { formatPercentForm, normalizeMultiplication, restyleBrackets } from "./calculation.ts";
 import {
   enToZh,
   parseUnitAliases,
@@ -155,7 +155,8 @@ export function formatExpression(
   settings: FormatSettings,
   convert: ConvertQuantity,
 ): string {
-  let tokens = tokenize(unifyMultiplication(expression));
+  // % 计算的规范形式先行：相对位展开、其余 %数字加括号（1.6.19），后续排版只做空格与写法
+  let tokens = tokenize(unifyMultiplication(formatPercentForm(expression)));
   // 中文写法优先级（1.6.1）：公斤→千克、公分→厘米。放在最前，
   // 后续制式换算与风格改写都只见规范写法；注释不进这里，不会被改。
   tokens = tokens.map((token) => {

@@ -1,4 +1,4 @@
-import { calculateInput, restyleBrackets } from "./calculation.ts";
+import { calculateInput, formatPercentForm, restyleBrackets } from "./calculation.ts";
 
 // result 是可复用继续计算的结果值（与显示一致的四位精度），expression 保留原始算式供回看与写回笔记。
 export type HistoryItem = { expression: string; result: string };
@@ -55,6 +55,10 @@ export function pressKeypad(state: KeypadState, key: string): KeypadState {
     const missing = unclosedDepth(source);
     if (missing > 0) source = restyleBrackets(source + ")".repeat(missing));
     source = stripNumberOnlyBrackets(source);
+    // % 计算的规范形式入历史（1.6.19）：相对位展开（200 + 10% → 200 + [200 × (10%)]，括号
+    // 形态遵循 1.6.12 的嵌套换形约定）、其余 %数字加括号——历史与「插入笔记」展示的就是
+    // 求值所用的语义形式
+    source = restyleBrackets(formatPercentForm(source));
     const outcome = calculateInput(source);
     if (!outcome.ok) return { ...state, error: outcome.error };
     // 算式框、续算基值与历史条目一律用不带千分位逗号的同值（1.6.14）：

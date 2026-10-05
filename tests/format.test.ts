@@ -208,6 +208,9 @@ test("格式化把括号收敛为 {[( )]} 嵌套形态，且不改变求值结�
 
 test("per-mille formats like a percent token", () => {
   const settings = DEFAULT_FORMAT_SETTINGS;
-  assert.equal(formatNoteBody("200+10‰", settings, convertUnitQuantity), "200 + 10‰");
-  assert.equal(formatNoteBody("50‰", settings, convertUnitQuantity), "50‰");
+  // 相对位展开（外层括号按 1.6.12 嵌套换形为 []）；非相对位的 %/‰ 加括号标记小数语义
+  assert.equal(formatNoteBody("200+10‰", settings, convertUnitQuantity), "200 + [200 × (10‰)]");
+  assert.equal(formatNoteBody("50‰", settings, convertUnitQuantity), "(50‰)");
+  assert.equal(formatNoteBody("10% + 10%", settings, convertUnitQuantity), "(10%) + (10%)");
+  assert.equal(formatNoteBody("200+10%", settings, convertUnitQuantity), "200 + [200 × (10%)]");
 });

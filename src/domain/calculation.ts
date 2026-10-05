@@ -152,15 +152,105 @@ function checkBracketDepth(expression: string): void {
   }
 }
 
-// 百分号/千分号相加减按数值（1% + 5% = 0.06）：mathjs 无法把作为左操作数的 % 脱糖
-//（报「暂不支持这个运算符」），两侧都转绝对值。仅当左侧百分号是完整操作数
-//（表达式开头或开括号后）时生效，不影响 200 + 10% + 10% 这类写法的既有结果。
-function resolvePercentPairs(expression: string): string {
-  return expression.replace(
-    /(^|\()\s*(-?\d+(?:\.\d+)?)(%|‰)\s*([+-])\s*(\d+(?:\.\d+)?)(%|‰)/g,
-    (_, prefix, a, signA, op, b, signB) =>
-      `${prefix}(${a}${signA === "‰" ? "/1000" : "/100"}) ${op} (${b}${signB === "‰" ? "/1000" : "/100"})`,
-  );
+// % 计算规则（1.6.19）：
+// - 唯一的 %/‰ 数字且位于末尾、左侧是顶层 + 或 -：相对其紧邻的左操作数
+//   （200 + 10% = 200 + (200×10/100)；100 + 200 + 10% = 100 + 200 + (200×10/100)）。
+// - 其余情况（多个、不在末尾、×÷ 之后）：%数字等同小数（N/100、N/1000）。
+// mathjs 无法脱糖作为左操作数的 %，也不满足「紧邻操作数」的取基方式，全部在此自行改写。
+const PERCENT_TOKEN = /(\d+(?:\.\d+)?)([%‰])/g;
+
+// 紧跟在 percent 左侧的顶层 ± 运算符（含其前缀深度检查）；无则返回 null。
+function trailingRelativePercent(
+  expression: string,
+): { number: string; sign: string; opIndex: number } | null {
+  const tokens = [...expression.matchAll(PERCENT_TOKEN)];
+  if (tokens.length !== 1) return null;
+  const token = tokens[0];
+  const start = token.index ?? 0;
+  const numberEnd = start + token[0].length;
+  // percent 之后只允许一层包住它的 `)`（(10%) 形态），且该括号必须包到表达式末尾
+  if (expression[numberEnd] === ")") {
+    let depth = 0;
+    let open = -1;
+    for (let j = numberEnd; j >= 0; j--) {
+      const c = expression[j];
+      if (c === ")") depth++;
+      else if (c === "(") {
+        depth--;
+        if (depth === 0) {
+          open = j;
+          break;
+        }
+      }
+    }
+    if (open < 0 || numberEnd !== expression.length - 1) return null;
+    if (expression.slice(open + 1, start).trim() !== "") return null;
+  } else if (numberEnd !== expression.length) {
+    return null;
+  }
+  let i = start - 1;
+  while (i >= 0 && /\s/.test(expression[i])) i--;
+  // 已验证的包裹括号：(10%) 的 ( 不挡运算符
+  if (expression[i] === "(" && expression[numberEnd] === ")") {
+    i--;
+    while (i >= 0 && /\s/.test(expression[i])) i--;
+  }
+  const opIndex = i;
+  const ch = expression[opIndex];
+  if (ch !== "+" && ch !== "-") return null;
+  let depth = 0;
+  for (let j = 0; j < opIndex; j++) {
+    const c = expression[j];
+    if (c === "(" || c === "[" || c === "{") depth++;
+    else if (c === ")" || c === "]" || c === "}") depth--;
+  }
+  if (depth !== 0) return null;
+  return { number: token[1], sign: token[2], opIndex };
+}
+
+// 从运算符往回取紧邻的左操作数（数字/变量/括号组，含 ×÷ 链）。
+function percentOperand(text: string, operatorIndex: number): string {
+  let depth = 0;
+  let i = operatorIndex - 1;
+  while (i >= 0) {
+    const ch = text[i];
+    if (depth === 0 && (ch === "+" || ch === "-")) break;
+    if (ch === ")" || ch === "]" || ch === "}") depth++;
+    else if (ch === "(" || ch === "[" || ch === "{") {
+      if (depth === 0) break;
+      depth--;
+    }
+    i--;
+  }
+  return text.slice(i + 1, operatorIndex).trim();
+}
+
+// 求值前的 % 脱糖：相对位展开为 操作数×(N/100|1000)，其余转为小数。
+function desugarPercents(expression: string): string {
+  const relative = trailingRelativePercent(expression);
+  if (relative) {
+    const operand = percentOperand(expression, relative.opIndex);
+    if (operand) {
+      const per = relative.sign === "‰" ? "1000" : "100";
+      return `${expression.slice(0, relative.opIndex + 1)} (${operand} * (${relative.number}/${per}))`;
+    }
+  }
+  return expression.replace(PERCENT_TOKEN, (_, n, sign) => `(${n}/${sign === "‰" ? 1000 : 100})`);
+}
+
+// % 计算的规范书写形式（格式化与计算器历史用，1.6.19）：
+// 相对位展开为 <操作数> × (N%)，其余 %数字 加括号标记小数语义（已加括号的不重复）。
+export function formatPercentForm(expression: string): string {
+  const relative = trailingRelativePercent(expression);
+  if (relative) {
+    const operand = percentOperand(expression, relative.opIndex);
+    if (operand) {
+      const op = expression[relative.opIndex];
+      return `${expression.slice(0, relative.opIndex).trimEnd()} ${op} (${operand} × (${relative.number}${relative.sign}))`;
+    }
+  }
+  // of/on/off 短语里的 % 不加括号（保持短语可被 normalize 识别重排）
+  return expression.replace(/(?<!\()(\d+(?:\.\d+)?)([%‰])(?!\))(?!\s*(?:of|on|off)\b)/g, "($1$2)");
 }
 
 function normalize(source: string): string {
@@ -188,23 +278,15 @@ function normalize(source: string): string {
     .replace(/\btimes\b/g, "*")
     .replace(/\bdivided by\b/g, "/");
   expression = normalizeMultiplication(expression);
-  // 百分比短语：‰ 与 % 同族（of 按千分之一/百分之一取值，on/off 相对基数加减）
+  // 百分比短语（of/on/off）：重排为标准形态，语义交给统一的 % 脱糖
+  //（of = 乘、on = 加、off = 减；10% on 200 → 200 + 10% → 相对 220）
   const phrase = expression.match(/^(-?\d+(?:\.\d+)?)([%‰])\s+(of|on|off)\s+(.+)$/);
   if (phrase) {
     const [, amount, sign, operation, base] = phrase;
-    const op = operation === "on" ? "+" : "-";
-    expression =
-      operation === "of"
-        ? `(${base}) * (${amount} / ${sign === "‰" ? "1000" : "100"})`
-        : sign === "‰"
-          ? `(${base}) ${op} (${amount}/10)%`
-          : `(${base}) ${op} ${amount}%`;
+    const op = operation === "of" ? "*" : operation === "on" ? "+" : "-";
+    expression = `(${base}) ${op} (${amount}${sign})`;
   }
-  // 百分号/千分号相加减按数值（在 ‰ 短语之后、通用 ‰ 换写之前，两者都还是字面后缀）
-  expression = resolvePercentPairs(expression);
-  // 千分号（1.6.17）：‰ 按千分之一参与——数字后缀换写成百分号（10‰ ≡ 1%，相对语义与 % 一致）；
-  // 变量后缀按数值处理（x‰ → (x/1000)）。百分比变量本身已带 ‰ 信息（千分率 = 10‰ 存 0.01）。
-  expression = expression.replace(/(\d+(?:\.\d+)?)‰/g, "($1/10)%");
+  // 变量后缀 ‰ 按数值处理（x‰ → (x/1000)）；数字后缀的 %/‰ 由 desugarPercents 统一处理
   expression = expression.replace(/([\p{L}_][\p{L}\p{N}_]*)‰/gu, "($1/1000)");
   return expression;
 }
@@ -528,12 +610,13 @@ export function calculate(
   percentages = new Set<string>(),
 ) {
   if (source.length > 1000) throw new Error("单行算式最多 1000 个字符");
-  const expression = resolvePercentPairs(
-    normalize(source.trim()).replace(/[\p{L}_][\p{L}\p{N}_]*/gu, (name) => {
-      const value = scope.get(name);
-      return percentages.has(name) && isBigNumber(value) ? `${value.times(100).toString()}%` : name;
-    }),
-  );
+  const rewritten = normalize(source.trim()).replace(/[\p{L}_][\p{L}\p{N}_]*/gu, (name) => {
+    const value = scope.get(name);
+    return percentages.has(name) && isBigNumber(value) ? `${value.times(100).toString()}%` : name;
+  });
+  // 百分比标志：整个算式就是一个 %/‰ 数字时，赋值变量携带相对语义（折扣 = 10% → 200 - 折扣 = 180）
+  const percentage = /^\(?\s*\d+(?:\.\d+)?[‰%]\s*\)?$/.test(rewritten.trim());
+  const expression = desugarPercents(rewritten);
   if (!expression) throw new Error("先输入一个算式");
   checkNumberWidth(expression);
   checkBracketDepth(expression);
@@ -582,7 +665,6 @@ export function calculate(
       value.skipAutomaticSimplification = true;
     }
   }
-  const percentage = Boolean((tree as MathNode & { isPercentage?: boolean }).isPercentage);
   return {
     value,
     percentage,
