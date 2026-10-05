@@ -60,11 +60,11 @@ test("brackets restyle by nesting depth and input guards block invalid expressio
   assert.equal(user.expression, "[(8+2)×3]×4");
   assert.equal(type(["(", "(", "(", "1", "+", "2", ")", ")", ")"]).expression, "{[(1+2)]}");
   assert.equal(type(["(", "(", "(", "1", "+", "2", ")", ")", ")", "×", "3", "="]).result, "9");
-  // 同层的兄弟括号保持 ()
-  assert.equal(type(["(", "8", "+", "2", ")", "(", "3"]).expression, "(8+2)(3");
-  assert.equal(type(["(", "8", "+", "2", ")", "(", "3", ")", ")"]).expression, "(8+2)(3)");
-  // 守卫：开括号不跟数字、关括号必须有未闭合的开括号且不能紧跟开括号/运算符、最多 3 层
-  assert.equal(type(["2", "("]).expression, "2");
+  // 同层的兄弟括号：关括号后的开括号自动补 ×（1.6.13 容错）
+  assert.equal(type(["(", "8", "+", "2", ")", "(", "3"]).expression, "(8+2)×(3");
+  assert.equal(type(["(", "8", "+", "2", ")", "(", "3", ")", ")"]).expression, "(8+2)×(3)");
+  // 守卫：开括号跟数字自动补 ×、关括号必须有未闭合的开括号且不能紧跟开括号/运算符、最多 3 层
+  assert.equal(type(["2", "("]).expression, "2×(");
   assert.equal(type([")"]).expression, "");
   assert.equal(type(["(", ")"]).expression, "(");
   assert.equal(type(["2", "+", ")"]).expression, "2+");
@@ -76,6 +76,23 @@ test("brackets restyle by nesting depth and input guards block invalid expressio
   assert.equal(type(["2", "+", "-"]).expression, "2-");
   assert.equal(type(["2", "+", "%"]).expression, "2+");
   assert.equal(type(["(", "0", ".", "5", "%", ")"]).expression, "(0.5%)");
+});
+test("input tolerance on equals: auto-close brackets and strip dangling operators", () => {
+  // 有开括号没关括号：等号自动补齐关括号后再算
+  const closed = type(["(", "8", "+", "2", "="]);
+  assert.equal(closed.result, "10");
+  assert.equal(closed.history[0].expression, "(8+2)");
+  assert.equal(type(["(", "(", "(", "1", "+", "2", "="]).result, "3");
+  assert.equal(type(["(", "8", "+", "2", "=", "×", "3", "="]).result, "30");
+  // 补齐后仍是错误表达式 → 显示错误，不给出数值
+  const bad = type(["2", "×", "(", "="]);
+  assert.equal(bad.result, null);
+  assert.ok(bad.error);
+  // 末尾悬挂的运算符：等号先剥掉再算（2+ = → 2）
+  assert.equal(type(["2", "+", "="]).result, "2");
+  assert.equal(type(["2", "+", "3", "×", "="]).result, "5");
+  // 负数参与运算用 ± 键：8÷2± → 8÷(-2) → -4
+  assert.equal(type(["8", "÷", "2", "±", "="]).result, "-4");
 });
 test("digit input is capped at 16 integer digits and 4 decimals", () => {
   // 整数到 16 位后再按数字无反应

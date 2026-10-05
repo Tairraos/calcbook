@@ -31,9 +31,14 @@ export function pressKeypad(state: KeypadState, key: string): KeypadState {
   if (key === "AC" || key === "Escape") return { ...initialKeypad, history: state.history };
   if (key === "=" || key === "Enter") {
     if (!state.expression || state.result !== null) return state;
-    const outcome = calculateInput(state.expression);
+    // 容错（1.6.13）：等号时先剥掉末尾悬挂的运算符，再自动补齐未闭合的关括号；
+    // 补整后仍是错误表达式的，显示具体错误（结果位置不出现数值）。
+    let source = state.expression;
+    while (source.length > 1 && /[+\-*/×÷]$/.test(source)) source = source.slice(0, -1);
+    const missing = unclosedDepth(source);
+    if (missing > 0) source = restyleBrackets(source + ")".repeat(missing));
+    const outcome = calculateInput(source);
     if (!outcome.ok) return { ...state, error: outcome.error };
-    const source = state.expression;
     return {
       ...state,
       // 等号后算式框与结果列同时变成结果值；续算、退格都基于显示精度。
@@ -64,26 +69,28 @@ export function pressKeypad(state: KeypadState, key: string): KeypadState {
     if (!/^[\d.+\-*/()%×÷]$/.test(key)) return state;
     if (state.result !== null && /^[\d.(]$/.test(key)) expression = "";
     if (expression.length >= 200) return state;
-    // 输入守卫（1.6.12）：防范算不出来的写法——开括号不跟在数字后、关括号要有对应
-    // 开括号且不能紧跟开括号/运算符/小数点、括号最多 3 层、% 只跟在数字后。
-    if (key === "(") {
-      if (/[\d.%]$/.test(expression) || unclosedDepth(expression) >= 3) return state;
-    } else if (key === ")") {
-      // 末尾是数字、% 或任意形态的关括号才允许继续关（换形后可能是 ) ] }）
-      if (!/[\d%)\]}]$/.test(expression) || unclosedDepth(expression) === 0) return state;
-    } else if (key === "%") {
+    // 输入容错（1.6.13）：数字不跟在关括号后（)8 的 8 没有反应）；% 只跟在数字后
+    //（单独输入、跟在运算符/关括号后都没反应，连续 % 天然只留一个）。
+    if (/^\d$/.test(key) && /[)\]}]$/.test(expression)) return state;
+    if (key === "%") {
       if (!/\d$/.test(expression)) return state;
-    } else if (key === "." && !/\d$/.test(expression)) {
-      // 小数点只跟在数字后面（开括号/运算符后先补 0 由下方既有逻辑处理，关括号后不补）
-      if (/[)%\]}]$/.test(expression)) return state;
+    } else if (key === ".") {
+      // 小数点：连续输入只留一个；不跟在关括号/百分号后（开括号/运算符后先补 0）
+      if (/\d*\.\d*$/.test(expression) || /[)%\]}]$/.test(expression)) return state;
+      if (!expression || /[+\-*/×÷(]$/.test(expression)) expression += "0";
+    } else if (key === ")") {
+      // 没有未闭合的开括号时关括号没反应；也只能跟在数字/百分号/关括号后
+      if (!/[\d%)\]}]$/.test(expression) || unclosedDepth(expression) === 0) return state;
+    } else if (key === "(") {
+      // 括号最多 3 层；跟在数字/百分号/关括号后自动补乘号（8( → 8×(，一输完立刻出现）
+      if (unclosedDepth(expression) >= 3) return state;
+      if (/[\d.%)\]}]$/.test(expression)) expression += "×";
     }
     if (/^[+*/×÷]$/.test(key) && !expression) return state;
-    if (/^[+\-*/×÷]$/.test(key) && /[+*/×÷]$/.test(expression))
-      // 运算符不连续：末尾是运算符时直接替换（- 也一样，负数用 ± 键）
+    // 运算符连续输入就是修改：末尾运算符被新运算符替换（+ 再 - 只留 -）
+    if (/^[+\-*/×÷]$/.test(key) && /[+\-*/×÷]$/.test(expression))
       expression = expression.slice(0, -1);
     if (/^[+\-*/×÷]$/.test(key) && /\($/.test(expression) && key !== "-") return state; // 开括号后只接受 -（负数），其余运算符拒绝
-    if (key === "." && /\d*\.\d*$/.test(expression)) return state;
-    if (key === "." && (!expression || /[+\-*/×÷(]$/.test(expression))) expression += "0";
     if (/^\d$/.test(key) && expression === "0") expression = "";
     // 数字宽度封顶（1.6.11）：整数 16 位、小数 4 位——继续输入该数字超限时按键无反应。
     // 只查正在输入的这一段（从上一运算符/括号之后），算式其余部分不参与。
