@@ -189,6 +189,7 @@ export function registerCustomUnits(math: {
   math.createUnit("shili", { definition: "500 m" });
   math.createUnit("shi", { definition: "100 L" });
   math.createUnit("cal", { definition: "4.184 J" });
+  math.createUnit("kcal", { definition: "4184 J" });
   math.createUnit("knot", { definition: "1.852 km / h" });
 }
 

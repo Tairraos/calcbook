@@ -13,6 +13,7 @@ test("中文单位名直接参与计算，结果语言跟随算式", () => {
   assert.deepEqual(display("2加仑 to 升"), ["7.5708升"]);
   assert.deepEqual(display("2斤 to 克"), ["1,000克"]);
   assert.deepEqual(display("1亩 to 平方米"), ["666.6667平方米"]);
+  assert.deepEqual(display("1 kcal to 焦"), ["4,184焦"]);
 });
 
 test("结果向同行更小的单位靠拢", () => {
