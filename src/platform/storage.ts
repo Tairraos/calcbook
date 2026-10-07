@@ -148,7 +148,7 @@ export async function saveWorkspace(workspace: Workspace): Promise<void> {
     });
     for (const note of validated.notes) {
       const previous = noteSnapshot.get(note.id);
-      const serialized = serializeNoteBody(note.body);
+      const serialized = serializeNoteBody(note.body, { unitStyle: validated.format.unitStyle });
       const noteId = resolveNoteId(note.id);
       if (!previous) {
         await invoke("write_note", { noteId, body: serialized });

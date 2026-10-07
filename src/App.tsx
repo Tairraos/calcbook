@@ -169,13 +169,18 @@ export default function App() {
     scratch ??
     notes.find((note) => note.id === workspace?.activeId && note.trashed === trashView) ??
     notes.find((note) => note.trashed === trashView);
-  // 结果区显示设置（千分位、数字与单位空格）改动立即生效：作为 evaluateNotebook 参数参与 memo 依赖
+  // 结果区显示设置（千分位、数字与单位空格、单位写法）改动立即生效：作为 evaluateNotebook 参数参与 memo 依赖
   const resultThousands = workspace?.format.resultThousands ?? true;
   const resultUnitSpacing = workspace?.format.unitSpace ?? false;
+  const resultUnitStyle = workspace?.format.unitStyle ?? "free";
   const results = useMemo(
     () =>
-      evaluateNotebook(selected?.body ?? "", { unitSpacing: resultUnitSpacing, resultThousands }),
-    [selected?.body, resultThousands, resultUnitSpacing],
+      evaluateNotebook(selected?.body ?? "", {
+        unitSpacing: resultUnitSpacing,
+        resultThousands,
+        unitStyle: resultUnitStyle,
+      }),
+    [selected?.body, resultThousands, resultUnitSpacing, resultUnitStyle],
   );
   const resultCount = results.filter((line) => line.kind === "result").length;
   const errorCount = results.filter((line) => line.kind === "error").length;
@@ -558,7 +563,7 @@ export default function App() {
       historyBaseline.current.set(noteId, body);
       return recordHistoryFile(
         noteId,
-        serializeNoteBody(body),
+        serializeNoteBody(body, { unitStyle: workspace?.format.unitStyle }),
         localTimestamp(),
         (workspace?.historyLimitKB ?? DEFAULT_HISTORY_LIMIT_KB) * 1024,
       ).catch(() => {
@@ -792,7 +797,12 @@ export default function App() {
       const note = workspace?.notes.find((item) => item.id === noteId);
       if (!note) return;
       try {
-        if (await downloadText(`${title || "未命名笔记"}.txt`, serializeNoteBody(note.body)))
+        if (
+          await downloadText(
+            `${title || "未命名笔记"}.txt`,
+            serializeNoteBody(note.body, { unitStyle: workspace?.format.unitStyle }),
+          )
+        )
           notify("已导出文本笔记（含结果）");
       } catch {
         notify("导出失败，请重试。", true);

@@ -40,8 +40,11 @@ function commentIndex(source: string): number {
   return Math.min(slash, hash);
 }
 
-export function serializeNoteBody(body: string): string {
-  return evaluateNotebook(body)
+export function serializeNoteBody(
+  body: string,
+  options: { unitStyle?: "free" | "chinese" | "lower" | "upper" } = {},
+): string {
+  return evaluateNotebook(body, options)
     .map((line) => {
       const source = stripResult(line.source.trimEnd());
       if (line.kind !== "result" || line.display === undefined) return source;

@@ -311,13 +311,14 @@ function canonicalToken(component: { prefix: unknown; unit: { name: string } }):
 function validateTree(tree: MathNode, scope: Scope): SeenUnit[] {
   let count = 0;
   const seen = new Map<string, SeenUnit>();
-  const addSeen = (token: string, chinese: boolean) => {
+  const addSeen = (token: string, chinese: boolean, carried = false) => {
     const key = token.toLowerCase();
     const upper = !chinese && /[A-Z]/.test(token) && token === token.toUpperCase();
     const existing = seen.get(key);
     if (existing) {
       existing.chinese ||= chinese;
       existing.upper ||= upper;
+      existing.carried ||= carried;
       return;
     }
     seen.set(key, {
@@ -325,6 +326,7 @@ function validateTree(tree: MathNode, scope: Scope): SeenUnit[] {
       written: token,
       chinese,
       upper,
+      carried,
       kind: unitKind(token),
       mag: unitMagnitude(token),
     });
@@ -334,7 +336,7 @@ function validateTree(tree: MathNode, scope: Scope): SeenUnit[] {
       const scopedValue = scope.get(name);
       if (isUnit(scopedValue)) {
         for (const component of scopedValue.units) {
-          addSeen(canonicalToken(component), false);
+          addSeen(canonicalToken(component), false, true);
         }
       }
       return;
@@ -489,19 +491,13 @@ function reservedConflict(name: string): string | null {
 }
 
 // 结果单位规则：制式优先级 公制 > 英制 > 市制；同制式内向更小的单位靠拢；
-// 结果的单位语言跟随算式（中文 > 大写英文 > 小写英文）。
+// 结果的单位语言跟随算式（中文 > 英文小写 > 英文大写），设置里「单位写法」可整体强制。
 function applyResultUnitRule(
   value: CalcValue,
   seen: SeenUnit[],
   forcedLanguage?: ResultLanguage,
 ): { value: CalcValue; language: ResultLanguage } {
-  const language: ResultLanguage =
-    forcedLanguage ??
-    (seen.some((unit) => unit.chinese)
-      ? "chinese"
-      : seen.some((unit) => unit.upper)
-        ? "upper"
-        : "lower");
+  const language: ResultLanguage = forcedLanguage ?? seenLanguage(seen);
   if (!isUnit(value)) return { value, language };
   // 汇总 seen：行内 token + 结果自身分量（scope 变量的分量已在树里收集）。
   const present: SeenUnit[] = [...seen];
@@ -560,13 +556,13 @@ function applyResultUnitRule(
   return { value, language };
 }
 
-// 算式语言：中文 > 大写英文 > 小写英文。
+// 算式语言：中文 > 英文小写 > 英文大写。大小写只看本行字面写下的 token（inLine）——
+// validateTree 的 token 已规范化、变量携带的单位没有本行写法，都按小写输出约定处理；
+// 只有整行字面全大写才算英文大写。
 function seenLanguage(seen: SeenUnit[]): ResultLanguage {
-  return seen.some((unit) => unit.chinese)
-    ? "chinese"
-    : seen.some((unit) => unit.upper)
-      ? "upper"
-      : "lower";
+  if (seen.some((unit) => unit.chinese)) return "chinese";
+  const written = seen.filter((unit) => unit.inLine);
+  return written.length && written.every((unit) => unit.upper) ? "upper" : "lower";
 }
 
 // 复合单位（如速度）在制式不同时按分量换算到目标制式。
@@ -608,6 +604,8 @@ export function calculate(
   source: string,
   scope: Scope = new Map(),
   percentages = new Set<string>(),
+  zhUnits = new Set<string>(),
+  forcedLanguage?: ResultLanguage,
 ) {
   if (source.length > 1000) throw new Error("单行算式最多 1000 个字符");
   const rewritten = normalize(source.trim()).replace(/[\p{L}_][\p{L}\p{N}_]*/gu, (name) => {
@@ -623,10 +621,18 @@ export function calculate(
   const tree = math.parse(expression);
   // 行内单位 token（大小写/中文）+ 作用域变量携带的单位
   const seen = [...scanUnitTokens(source), ...validateTree(tree, scope)];
+  // 中文写法记忆：本行字面写下的中文单位记入本篇集合（evaluateNotebook 逐行持有）；
+  // 此前以中文出现过的单位经变量（赋值/prev）携带进算式时沿用中文呈现。
+  for (const unit of seen) {
+    const key = unit.token.toLowerCase();
+    if (unit.chinese) zhUnits.add(key);
+    else if (unit.carried && zhUnits.has(key)) unit.chinese = true;
+  }
   // 同一单位有多种中文写法（公斤/千克）时冲突用规范名；只有一种写法则保留原写法。
+  // 变量携带的单位本行没有用户写法，不参与写法统计，交给 enToZh 兜底。
   const writtenForms = new Map<string, Set<string>>();
   for (const unit of seen) {
-    if (!unit.chinese) continue;
+    if (!unit.chinese || unit.carried) continue;
     const key = unit.token.toLowerCase();
     const forms = writtenForms.get(key) ?? new Set<string>();
     forms.add(unit.written);
@@ -642,16 +648,17 @@ export function calculate(
   if (isUnit(value)) {
     const cancelled = cancelSameDimension(value);
     const explicit = hasExplicitConversion(tree);
-    language = explicit ? seenLanguage(seen) : "lower";
+    language = forcedLanguage ?? (explicit ? seenLanguage(seen) : "lower");
     if (cancelled.cancelled) {
       value = cancelled.value as CalcValue;
-      language = explicit ? language : "lower";
+      // 约分后的剩余单位同样跟随算式语言（中文 > 小写 > 大写），不退回小写英文。
+      language = forcedLanguage ?? seenLanguage(seen);
     } else if (explicit) {
       // 显式 to 的目标单位原样呈现，不做制式合并、不做最小单位靠拢。
       value.fixPrefix = true;
       value.skipAutomaticSimplification = true;
     } else {
-      const applied = applyResultUnitRule(value, seen);
+      const applied = applyResultUnitRule(value, seen, forcedLanguage);
       value = applied.value as Unit;
       language = applied.language;
     }
@@ -691,10 +698,18 @@ function readableError(error: unknown): string {
 
 export function evaluateNotebook(
   text: string,
-  options: { unitSpacing?: boolean; resultThousands?: boolean } = {},
+  options: {
+    unitSpacing?: boolean;
+    resultThousands?: boolean;
+    unitStyle?: "free" | "chinese" | "lower" | "upper";
+  } = {},
 ): LineResult[] {
   const scope: Scope = new Map();
   const percentages = new Set<string>();
+  const zhUnits = new Set<string>();
+  // 设置优先：单位写法不是「自由单位」时直接决定结果语言，压过算式内的语言优先级。
+  const forcedLanguage: ResultLanguage | undefined =
+    options.unitStyle && options.unitStyle !== "free" ? options.unitStyle : undefined;
   let block: CalcValue[] = [];
   let blockLanguages: ResultLanguage[] = [];
   let blockHasError = false;
@@ -763,7 +778,7 @@ export function evaluateNotebook(
                 seenUnits.push({
                   token,
                   written: token,
-                  chinese: false,
+                  chinese: zhUnits.has(token.toLowerCase()),
                   upper: /[A-Z]/.test(token) && token === token.toUpperCase(),
                   kind: unitKind(component.unit.name),
                   mag: unitMagnitude(token),
@@ -771,16 +786,18 @@ export function evaluateNotebook(
               }
             }
           }
-          const blockLanguage: ResultLanguage = blockLanguages.some((item) => item === "chinese")
-            ? "chinese"
-            : blockLanguages.some((item) => item === "upper")
-              ? "upper"
-              : "lower";
+          const blockLanguage: ResultLanguage =
+            forcedLanguage ??
+            (blockLanguages.some((item) => item === "chinese")
+              ? "chinese"
+              : blockLanguages.some((item) => item === "lower")
+                ? "lower"
+                : "upper");
           const applied = applyResultUnitRule(value, seenUnits, blockLanguage);
           value = applied.value as CalcValue;
           language = applied.language;
         } else {
-          const calculation = calculate(expression, scope, percentages);
+          const calculation = calculate(expression, scope, percentages, zhUnits, forcedLanguage);
           value = calculation.value;
           percentage = calculation.percentage;
           language = calculation.language;

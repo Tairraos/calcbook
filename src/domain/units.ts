@@ -376,6 +376,8 @@ export type SeenUnit = {
   written: string; // 用户写法（公斤/千克/kg…），结果显示时保留
   chinese: boolean;
   upper: boolean;
+  carried?: boolean; // 单位来自作用域变量（赋值/prev），本行没有写下它的写法
+  inLine?: boolean; // 本行字面写下的 token（scanUnitTokens 产物）；大小写语言判定只信这些
   kind: UnitSystemKind;
   mag: number; // 单个该单位折合基准单位的大小
 };
@@ -429,6 +431,7 @@ export function scanUnitTokens(source: string): SeenUnit[] {
       written: chinese ? word : token,
       chinese,
       upper,
+      inLine: true,
       kind: unitKind(token),
       mag: unitMagnitude(token),
     });

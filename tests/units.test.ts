@@ -16,11 +16,12 @@ test("中文单位名直接参与计算，结果语言跟随算式", () => {
 });
 
 test("结果向同行更小的单位靠拢", () => {
-  assert.deepEqual(display("5ml+6L"), ["6,005 ML"]);
+  // 语言优先级：中文 > 英文小写 > 英文大写——算式里出现小写时结果小写
+  assert.deepEqual(display("5ml+6L"), ["6,005 ml"]);
   assert.deepEqual(display("1L+500ML"), ["1,500 ML"]);
   assert.deepEqual(display("2 km + 500 m"), ["2,500 m"]);
   assert.deepEqual(display("1 foot + 30 cm"), ["60.48 cm"]);
-  // 英文大写在算式里出现时，结果保持大写
+  // 整行字面只有英文大写时，结果保持大写
   assert.deepEqual(display("5 KM + 500 M"), ["5,500 M"]);
 });
 
@@ -60,6 +61,33 @@ test("同量纲分量约分", () => {
   assert.deepEqual(display("2 kg / 500 g"), ["4"]);
   assert.deepEqual(display("1 mile / 1 km"), ["1.6093"]);
   assert.deepEqual(display("钙 = 10.2克 / 100克\n钙"), ["0.102", "0.102"]);
+});
+
+test("约分与变量携带的单位跟随算式中文写法", () => {
+  assert.deepEqual(display("(1米+25毫米)×100元/米"), ["102.5元"]);
+  assert.deepEqual(display("总价 = 100元\n总价 × 2"), ["100元", "200元"]);
+  assert.deepEqual(display("单价 = 5元/米\n面积 = 3米\n单价 × 面积"), ["5元 /米", "3米", "15元"]);
+  assert.deepEqual(display("体重 = 70公斤\n身高 = 1.75米\n体重 / (身高/米)^2"), [
+    "70公斤",
+    "1.75米",
+    "22.8571千克",
+  ]);
+});
+
+test("单位写法设置压过算式语言（设置 > 中文 > 英文小写 > 英文大写）", () => {
+  const withStyle = (source: string, unitStyle: "free" | "chinese" | "lower" | "upper") =>
+    evaluateNotebook(source, { unitStyle }).map((line) =>
+      line.kind === "result" ? line.display : `!${line.kind}`,
+    );
+  // 中文单位设置：英文算式也出中文单位，显式 to 同样
+  assert.deepEqual(withStyle("5 km + 2 mile", "chinese"), ["8.2187公里"]);
+  assert.deepEqual(withStyle("5 km to m", "chinese"), ["5,000米"]);
+  // 英文小写设置：中文算式也出小写英文
+  assert.deepEqual(withStyle("(1米+25毫米)×100元/米", "lower"), ["102.5 cny"]);
+  // 英文大写设置：整行强制大写
+  assert.deepEqual(withStyle("5米", "upper"), ["5 M"]);
+  // 自由单位：跟随算式（中文 > 英文小写 > 英文大写）
+  assert.deepEqual(withStyle("5ml+6L", "free"), ["6,005 ml"]);
 });
 
 test("按格式设置格式化整篇", () => {

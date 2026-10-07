@@ -140,6 +140,11 @@
     "expected": ["100", "4", "1.609344", "0.102", "0.102"]
   },
   {
+    "name": "cancellation and variables keep the formula's Chinese language",
+    "source": "(1米+25毫米)×100元/米\n总价 = 100元\n总价 × 2",
+    "expected": ["102.5元", "100元", "200元"]
+  },
+  {
     "name": "explicit conversion target is respected",
     "source": "5 km to mile\n1 kg to lb\n100 celsius to fahrenheit\n1 mile + 1 km to m",
     "expected": ["3.1068559611867 mile", "2.2046226218488 lb", "212 degf", "2609.344 m"]
