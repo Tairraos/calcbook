@@ -1,6 +1,6 @@
 # 架构地图
 
-状态：有效 · 负责人：项目维护者 · 核验日期：2026-09-07
+状态：有效 · 负责人：项目维护者 · 核验日期：2026-10-07
 
 一个桌面进程、一个窗口、一份工作区。保持计算可独立验证，持久化边界清晰，UI 可直接由浏览器驱动。
 
@@ -19,9 +19,11 @@ src-tauri/      ← invoke（固定命令、系统路径、原子写入、保存
 | `src/domain/calculation.ts` | 逐行语义、x/括号别名、AST 白名单、BigNumber/Unit、两种显示精度 | DOM、I/O、React、任意脚本执行 |
 | `src/domain/units.ts` | 单位登记表（中英）、自定义单位注册、公制英制合并、按模式的行内单位改写 | DOM、I/O、React、重新实现单位换算 |
 | `src/domain/format.ts` | 笔记 txt 的行级序列化与导入剥离 | DOM、I/O、React、重新实现计算语义 |
+| `src/domain/formatting.ts` | 按格式设置整理正文（空格与千分位、单位写法与制式、括号换形收敛） | DOM、I/O、React、改变求值结果 |
 | `src/domain/keypad.ts` | 普通计算器的确定性状态转换 | 自己实现第二套数学语义 |
+| `src/domain/search.ts` | 查找替换的纯匹配引擎（正则、大小写、全词、循环导航） | DOM、I/O、React、直接修改编辑器状态 |
 | `src/domain/notebook.ts` | 工作区结构、旧主题迁移、两套主题与显示偏好校验 | 获取时间、生成 ID、读写数据 |
-| `src/ui/` | 原生 textarea 镜像、结果、按键、计算器子窗口、帮助与设置 dialog | 直接读写文件系统 |
+| `src/ui/` | 原生 textarea 镜像、结果、按键、查找替换、历史/帮助/设置弹窗、计算器子窗口、按键音 | 直接读写文件系统 |
 | `src/platform/storage.ts` | 平台分支、数据校验、关闭保护、导入导出、目录选择、打开项目链接 | 组件状态、业务计算 |
 | `src/useWorkspace.ts` | 先读后写、串行保存、成功/失败状态 | 静默吞掉最终保存失败 |
 | `src-tauri/src/storage.rs` | 持久化、备份、旧路径迁移、配置提交与目录切换 | 使用前端提供的数据路径 |

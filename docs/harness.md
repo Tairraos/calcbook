@@ -1,6 +1,6 @@
 # Harness 工作闭环
 
-状态：有效 · 负责人：项目维护者 · 核验日期：2026-09-29
+状态：有效 · 负责人：项目维护者 · 核验日期：2026-10-07
 
 本项目把可读的环境、明确的意图与可执行反馈放在一起。原则来源于 [OpenAI 原文调研](references/research.md)，实现按当前产品规模裁剪。
 
@@ -63,7 +63,7 @@ pnpm desktop
 
 - 算错：先将最小原文加入 `tests/cases/calculations.json`，修复共享内核，不只修一个入口。
 - 保存失败：先导出当前文本；保留 `workspace.json` 与 `.bak`。关闭应用后复制备份另存，确认内容再恢复。不要删除数据“修复”报错。
-- 默认笔记目录为 `~/.calcbook/`；macOS 目录配置在 `~/Library/Application Support/com.tairraos.calcbook/settings.json`，窗口尺寸记忆在同目录数据文件 `~/.calcbook/window.json`（删掉即恢复默认 800×640）。当前实际笔记路径以设置界面为准；开发隔离目录由上述显式环境变量决定。
+- 默认笔记目录为 `~/.calcbook/`；macOS 目录配置在 `~/Library/Application Support/com.tairraos.calcbook/settings.json`，窗口尺寸记忆在同一文件的 `window` 字段（删掉即恢复默认 800×640；旧版独立 window.json 仍兼容读取、首次保存后自动清理）。当前实际笔记路径以设置界面为准；开发隔离目录由上述显式环境变量决定。
 - 更换目录失败：先检查设置内错误；目标含不同工作区时请选择空文件夹。应用当前没有合并或覆盖已有工作区的流程，不删除目标文件绕过保护。
 - 架构检查失败：错误中提供违规文件和修复方向，将 I/O 移回 platform，将业务计算移回 domain。
 - 每次改变行为，同次更新契约、计划和质量证据；完成计划归档。发现重复的评审意见，把它变成最小的可运行约束。

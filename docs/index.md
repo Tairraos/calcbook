@@ -1,6 +1,6 @@
 # 文档地图
 
-状态：有效 · 负责人：项目维护者 · 核验日期：2026-09-06
+状态：有效 · 负责人：项目维护者 · 核验日期：2026-10-07
 
 仓库是产品决策和工程事实的记录系统。先找到对应文档，不需要把所有文档一次读入上下文。
 
@@ -12,7 +12,7 @@
 | 首版做什么、怎样验收 | [产品规格](product-specs/mvp.md) |
 | 算式、变量、百分比、错误规则 | [语言契约](product-specs/calculation-language.md) |
 | 界面、主题、键盘与可访问性 | [设计规范](design-docs/ui.md) |
-| 为什么这样启动 | [官方资料调研](references/research.md) |
+| 为什么这样启动 | [Harness 原文调研](references/research.md) |
 | 如何复现、修改、验证、交付 | [Harness](harness.md) |
 | 哪些证据已具备、哪些尚未验证 | [质量记录](QUALITY_SCORE.md) |
 | 当前与已完成工作 | [执行计划](exec-plans/README.md) |
