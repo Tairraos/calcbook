@@ -4,7 +4,7 @@ import { convertUnitQuantity, evaluateNotebook } from "../src/domain/calculation
 import { parseNoteBody, serializeNoteBody, stripResult } from "../src/domain/format.ts";
 import { DEFAULT_FORMAT_SETTINGS, formatNoteBody } from "../src/domain/formatting.ts";
 
-// 用户真实保存的 Numi 文件（= 后面的结果是 Numi 保存时自动追加的）。
+// 用户真实保存的笔记文件（= 后面的结果是保存时自动追加的）。
 const 氨糖研究 = `#氨糖研究
 #益节 Move Free 红绿瓶每天3片
 氨糖 = 1500mg = 1,500 mg
@@ -107,12 +107,12 @@ BMR = (10 × 体重) + (6.25 × 身高) - (5 × 年龄) - 161
 全天总消耗 = BMR x 中度活动
 `;
 
-test("导入 Numi 文件时剥离自动追加的结果", () => {
+test("导入笔记文件时剥离自动追加的结果", () => {
   assert.equal(parseNoteBody(氨糖研究), 氨糖研究源);
   assert.equal(parseNoteBody(人体消耗计算), 人体消耗计算源);
 });
 
-test("剥离后重新计算得到 Numi 记录的结果", () => {
+test("剥离后重新计算得到文件记录的结果", () => {
   const results = evaluateNotebook(parseNoteBody(人体消耗计算)).map((line) => [
     line.source.trim(),
     line.display,
@@ -129,7 +129,7 @@ test("剥离后重新计算得到 Numi 记录的结果", () => {
   assert.equal(display("年龄 = 2025 - 1976"), "49");
   assert.equal(display("BMR = (10 x 体重) + (6.25 × 身高) - (5 × 年龄) + 5"), "1,566.25");
   assert.equal(display("全天总消耗 = BMR x 久坐"), "1,879.5");
-  // Numi 显示四舍五入后的 2,427.69，Calcbook 保留完整精度。
+  // 文件里记录的 2,427.69 是四舍五入值，Calcbook 保留完整精度。
   assert.equal(display("全天总消耗 = BMR x 中度活动"), "2,427.6875");
   assert.equal(display("全天总消耗 = BMR x 久坐", 1), "1,438.8");
   assert.equal(display("全天总消耗 = BMR x 中度活动", 1), "1,858.45");
@@ -150,14 +150,14 @@ test("保存时追加结果，再导入回到同一份源文本", () => {
   for (const source of [氨糖研究源, 人体消耗计算源]) {
     const written = serializeNoteBody(source);
     assert.equal(parseNoteBody(written), source);
-    // 可计算的整行末尾必须带上结果，才能被 Numi 与下次导入识别。
+    // 可计算的整行末尾必须带上结果，下次导入时才能识别并剥离。
     assert.match(written, / = /);
   }
   // “毫克”加入别名后该行可以计算；同量纲分量约分后为 0.9 g^2，结果如实追加。
   assert.match(serializeNoteBody(氨糖研究源), /^片 = 0\.9克 \* 1000毫克 = 0\.9 g\^2$/m);
 });
 
-test("保存格式与 Numi 一致：注释、空行、标题原样保留", () => {
+test("保存时注释、空行、标题原样保留", () => {
   const written = serializeNoteBody(人体消耗计算源);
   const lines = written.split("\n");
   assert.equal(lines[0], "# 人体消耗计算");

@@ -125,7 +125,7 @@ export async function loadWorkspace(): Promise<Workspace | null> {
     noteSnapshot = new Map(
       workspace.notes.map((note) => [note.id, { body: note.body, trashed: note.trashed }]),
     );
-    // 正文来自 Numi 兼容的 .txt：导入时剥掉保存时自动追加的 "= 结果"，内存里只留源表达式。
+    // 正文来自 .txt：导入时剥掉保存时自动追加的 "= 结果"，内存里只留源表达式。
     return {
       ...workspace,
       notes: workspace.notes.map((note) => ({ ...note, body: parseNoteBody(note.body) })),

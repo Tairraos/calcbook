@@ -34,7 +34,7 @@ test("scopes do not leak and long input is bounded", () => {
 test("result display unit spacing follows the option, raw and file format keep the space", () => {
   const body = "总长 = 5 km to m";
   const [line] = evaluateNotebook(body);
-  // 默认（历史行为）：数字与单位间有空格——写入 .txt 的 ` = 结果` 用它，Numi 兼容
+  // 默认（历史行为）：数字与单位间有空格——写入 .txt 的 ` = 结果` 用它
   assert.equal(line.display, "5,000 m");
   // 结果列实时对齐设置的「数字与单位空格」：关 = 紧贴，开 = 空格
   const [tight] = evaluateNotebook(body, { unitSpacing: false });
