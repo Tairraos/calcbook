@@ -1,6 +1,6 @@
 # Calcbook
 
-中文说明见 [README.zh.md](README.zh.md)。
+Chinese guide: [README.zh.md](README.zh.md)
 
 Write your calculations into your notes.
 
@@ -46,22 +46,25 @@ In short: any "jot a few numbers and calculate" moment is a moment for Calcbook 
 
 ```text
 # Weekend budget
-交通 = 186 × 2
-住宿 = 420 × 2
-餐饮 = 240
-预算 = 交通 + 住宿 + 餐饮
-每人 = 预算 / 2
-备用金：每人 + 10%
+transport = 186 × 2
+lodging = 420 × 2
+meals = 240
+budget = transport + lodging + meals
+share = budget / 2
+tip: share + 10%
 
 5 km to m
 90 min to hour
 1英里 + 1公里
 
-合计
+24
+36
+sum
 ```
 
 - A leading `#` marks a section title, `//` a comment; `label: expression` computes only what follows the colon.
 - `x` and `×` both multiply; `[]`, `{}`, `()` are interchangeable grouping brackets, nestable up to 3 levels.
+- Variables can be Chinese or English; the Chinese line above mixes directly with English units.
 - Results on the right are click-to-copy buttons; functions include `sqrt`, `abs`, `round`, `ceil`, `floor` and more.
 - Full syntax (unit list, reserved words, totals rules) lives in the [calculation language contract](docs/product-specs/calculation-language.md); the in-app "?" in the toolbar has a cheat sheet.
 
