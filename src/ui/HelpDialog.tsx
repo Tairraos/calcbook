@@ -25,7 +25,8 @@ type HelpContent = {
 };
 
 // 保留字全表：单位（中英对照，来自单位登记表；中文别名并入同一格——公斤是千克的别名，
-// 同样是保留字，必须可见）+ 函数/常量/汇总/关键字。别名数据两语言共用（中文写法本身就是数据）。
+// 同样是保留字，必须可见）+ 函数/常量/汇总/关键字。别名数据两语言共用（中文写法本身就是数据）；
+// 中文界面「中文 → 英文」，英文界面交换为「英文 → 中文」，英文提到前面。
 const unitReservedRows = (() => {
   const rows: ReferenceGroup["rows"] = [];
   const chineseAliases = (entry: (typeof UNITS)[number]) =>
@@ -43,12 +44,28 @@ const unitReservedRows = (() => {
   return rows;
 })();
 
+// 英文界面：每格按「；」拆开后交换 ` → ` 两侧（英文单位在前，中文写法保留在后）。
+const unitReservedRowsEn = unitReservedRows.map(
+  ([term, role, example]) =>
+    [
+      term
+        .split("；")
+        .map((segment) => {
+          const [zhPart, enPart] = segment.split(" → ");
+          return enPart ? `${enPart} → ${zhPart}` : segment;
+        })
+        .join("；"),
+      role,
+      example,
+    ] as ReferenceGroup["rows"][number],
+);
+
 function reservedGroupsFor(lang: Lang): ReferenceGroup[] {
   if (lang === "en") {
     return [
       {
         title: "Reserved · Units (Chinese & English, none usable as a variable name)",
-        rows: unitReservedRows.map(([term, , example]) => [term, "Unit", example]),
+        rows: unitReservedRowsEn,
         termLines: true,
       },
       {
@@ -119,7 +136,7 @@ function contentFor(lang: Lang): HelpContent {
       ],
       examples: [
         ["Arithmetic & brackets", "(18 + 24) × 3", "126"],
-        ["Define a variable", "价格 = 128\n价格 × 3", "384"],
+        ["Define a variable", "price = 128\nprice × 3", "384"],
         ["Add a percent", "200 + 10%", "220"],
         ["Percent of", "20% of 150", "30"],
         ["Convert units", "5 km to m", "5,000 m"],
@@ -177,12 +194,12 @@ function contentFor(lang: Lang): HelpContent {
             [
               "name = expression",
               "Define a variable, reusable below; reassigning updates later lines",
-              "价格 = 128 → 128",
+              "price = 128 → 128",
             ],
             [
               "label: expression",
               "Text label before the colon, not calculated",
-              "合计: 36 + 6 → 42",
+              "total: 36 + 6 → 42",
             ],
             [
               "Variable names",

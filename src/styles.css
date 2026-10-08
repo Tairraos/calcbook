@@ -423,7 +423,7 @@ kbd {
   align-items: center;
   gap: 2px;
 }
-.settings-entry > button:not(.theme-toggle) {
+.settings-entry > button:not(.theme-toggle):not(.lang-toggle) {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -435,6 +435,14 @@ kbd {
   font-size: 12px;
 }
 .settings-entry > button:hover {
+  color: var(--green);
+  background: var(--hover);
+}
+/* 语言按钮与主题按钮同尺寸（icon-button 基础 30px），负边距抵消 gap 让两枚按钮贴在一起。 */
+.settings-entry .lang-toggle {
+  margin-right: -2px;
+}
+.settings-entry .lang-toggle:hover {
   color: var(--green);
   background: var(--hover);
 }

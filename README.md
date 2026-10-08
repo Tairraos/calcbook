@@ -1,49 +1,49 @@
 # Calcbook
 
-把计算写进笔记。
+Write your calculations into your notes.
 
-写下一行算式，答案就在右边亮起——像想法得到了回应。中文变量、百分比、单位换算、分段汇总都是它的日常语言；灵感来时随手一记，每一笔都悄悄存成纯文本，随时可以带走。想按计算器的时候，旁边还有一只随叫随到的小窗。
+Type an expression and the answer lights up on the right — like an idea getting a reply. Chinese variables, percentages, unit conversions and section totals are all part of its everyday language. Jot things down as they come; every line quietly saves as plain text you can take anywhere. And when you'd rather tap a calculator, a little floating window is always on call.
 
-![Calcbook 运行界面](docs/assets/screenshot.png)
+![Calcbook in action](docs/assets/screenshot.png)
 
-它运行在你自己的电脑上：无需账号，不联网，没有遥测。可执行文件只有 5 MB 左右，打开即用。
+It runs on your own computer: no account, no network, no telemetry. The executable is around 5 MB — just open it and go.
 
-## 它能做什么
+## What it can do
 
-把「记下来的」和「算出来的」放在同一页纸上。左边是你写的文字和算式，右边是逐行对应的结果；改一个数字，后面的答案全部跟着变——像一份会自己更新的账。
+Put what you wrote and what you computed on the same page. On the left, your text and expressions; on the right, line-by-line results in step. Change one number and every downstream answer updates — like a ledger that balances itself.
 
-| 特色 | 一句话说明 |
+| Feature | In one line |
 | --- | --- |
-| 边写边算 | 文字、算式混着写，结果逐行对齐；随时回头改条件，答案自动重算 |
-| 中文变量 | `交通`、`餐饮`、`预算` 都能当变量名，记账像写句子 |
-| 中文亲和 | 界面、单位、报错全程中文；写下中文单位，结果就是中文单位——`(1米+25毫米)×100元/米` 得 `102.5元` |
-| 单位换算与混算 | 中英文单位都认识：`5 km to m`、`90 min to hour`；`1英里 + 1公里` 直接混算，结果并入公制（`2.6093公里`） |
-| 公制 / 英制 / 市制 | 三套单位制自由混算，结果自动向公制、向颗粒更小的单位对齐（`1 mile + 1 ft` → `5,281 foot`）；也可在设置里固定目标单位制 |
-| 分段汇总 | 空行分段，`合计`、`平均` 一写就出；一段账目自动算总 |
-| 随叫随到的小计算器 | 独立浮动小窗：单实例、可最小化、算式与历史常驻，「写入当前笔记」把算式送回正文 |
-| 一键格式化 | 空格、千分位、单位写法、单位制全可按习惯自定义；一键把潦草算式整理成清爽的账面，改完数字依然整齐 |
-| 高精度十进制 | `0.1 + 0.2` 就是 `0.3`；十进制 64 位有效数字，钱的事情没有浮点惊吓 |
-| 编辑历史 | 编辑时自动留快照：最近一小时最多每 10 分钟一份，更早的按小时归档；弹窗预览、一键恢复，改坏了随时找回 |
-| 纯文本，随时带走 | 每篇笔记是一个 `.txt`，任何编辑器都能打开；把外面的 `txt` 放进目录，拿来就算 |
-| 废纸篓 | 删掉的笔记先进废纸篓，随时恢复；确认后才真正删除文件 |
-| 两套配色 | 纸白与午夜，左下角一键切换 |
+| Calculate as you write | Mix text and expressions; results line up as you go. Change a condition and answers recompute |
+| Chinese variables | `交通`, `餐饮`, `预算` all work as variable names — bookkeeping that reads like sentences |
+| Chinese-friendly | Fully bilingual UI (English / 中文); write Chinese units and the answer answers in Chinese — `(1米+25毫米)×100元/米` gives `102.5元` |
+| Unit conversion & mixing | Both Chinese and English units: `5 km to m`, `90 min to hour`; `1英里 + 1公里` mixes directly and lands in metric (`2.6093公里`) |
+| Metric / Imperial / Market | Three unit systems mix freely; results lean metric and toward finer units (`1 mile + 1 ft` → `5,281 foot`); pin a target system in settings |
+| Section totals | Blank lines split sections; type `sum` or `average` and the total appears |
+| A calculator on call | Independent floating window: single instance, minimizable, expression & history kept; "insert into note" sends it back to your text |
+| One-click formatting | Spaces, thousands separators, unit style and unit system all customizable; tidy messy expressions into a clean ledger in one click |
+| High-precision decimals | `0.1 + 0.2` is exactly `0.3`; 64 significant decimal digits — no floating-point surprises with money |
+| Edit history | Automatic snapshots while you edit: up to every 10 minutes in the last hour, hourly archives beyond that; preview and restore from a dialog |
+| Plain text, take it anywhere | Every note is a `.txt` any editor can open; drop outside `txt` files into the folder and they're picked up as notes |
+| Trash | Deleted notes go to the Trash first, restorable anytime; files are deleted only after confirmation |
+| Two themes | Paper white and midnight, one click in the corner |
 
-## 什么场合用得上
+## When it's handy
 
-- **日常记账**：今天花了多少、这个月超没超，写完 `合计` 自动出总。
-- **购物比价**：`单价 × 数量`、九折八折的百分比，比完顺手留在笔记里。
-- **旅行出发前**：公里与英里、分钟与小时、预算按人头一摊。
-- **厨房与烘焙**：克与磅、毫升与升，食谱换算边看边算。
-- **学习与作业**：验证代数、拆解百分比，过程和答案都留痕。
-- **装修与手工**：材料长度、件数与单价，边量边记边算总账。
-- **工作台头**：报价、工期、人数预算的小算术，不必另开表格软件。
+- **Everyday bookkeeping**: what you spent today, over budget this month — type `sum` and the total just appears.
+- **Shopping comparisons**: `unit price × quantity`, ten-percent-off percentages — compare and keep it in the note.
+- **Before a trip**: kilometers to miles, minutes to hours, splitting a budget per person.
+- **Kitchen & baking**: grams to pounds, milliliters to liters, converting while you calculate.
+- **Study & homework**: check algebra, break down percentages, keep the work and the answer together.
+- **Renovation & crafts**: material lengths, counts and unit prices — measure, note, total.
+- **At the workbench**: small arithmetic for quotes, schedules and headcount — no spreadsheet needed.
 
-一句话：只要「写几个数、算一下」的需求，都值得它出场——不用建表格，不用开计算器再切回来。
+In short: any "jot a few numbers and calculate" moment is a moment for Calcbook — no sheets, no calculator app switching.
 
-## 写法速览
+## Quick syntax
 
 ```text
-# 周末预算
+# Weekend budget
 交通 = 186 × 2
 住宿 = 420 × 2
 餐饮 = 240
@@ -58,57 +58,60 @@
 合计
 ```
 
-- 行首 `#` 是小节标题，`//` 是注释；`说明：算式` 只算冒号后面的部分。
-- `x` 与 `×` 都可以当乘号，`[]`、`{}`、`()` 是同等的分组符号，可嵌套混用。
-- 右侧结果是可点击的复制按钮；函数有 `sqrt`、`abs`、`round`、`ceil`、`floor` 等。
-- 完整语法（单位清单、保留字、汇总规则）见[计算语言契约](docs/product-specs/calculation-language.md)，应用内右上角「?」有语法速查。
+- A leading `#` marks a section title, `//` a comment; `label: expression` computes only what follows the colon.
+- `x` and `×` both multiply; `[]`, `{}`, `()` are interchangeable grouping brackets, nestable up to 3 levels.
+- Results on the right are click-to-copy buttons; functions include `sqrt`, `abs`, `round`, `ceil`, `floor` and more.
+- Full syntax (unit list, reserved words, totals rules) lives in the [calculation language contract](docs/product-specs/calculation-language.md); the in-app "?" in the toolbar has a cheat sheet.
 
-## 快捷键
+## Keyboard shortcuts
 
-| 按键 | 作用 |
+| Keys | Action |
 | --- | --- |
-| `⌘/Ctrl N` | 新建笔记 |
-| `⌘/Ctrl K` | 搜索笔记 |
-| `⌘/Ctrl F` | 查找替换（当前笔记） |
-| `⌘/Ctrl S` | 立即保存 |
-| `⌘/Ctrl ⇧ C` | 复制当前行的计算结果 |
-| `⌘/Ctrl C` / `⌘/Ctrl X` | 编辑区未选中文字时，复制 / 剪切整行 |
-| `⌘/Ctrl ,` | 打开设置 |
+| `⌘/Ctrl N` | New note |
+| `⌘/Ctrl K` | Search notes |
+| `⌘/Ctrl F` | Find & replace (current note) |
+| `⌘/Ctrl S` | Save now |
+| `⌘/Ctrl ⇧ C` | Copy the current line's result |
+| `⌘/Ctrl C` / `⌘/Ctrl X` | Copy / cut the whole line when nothing is selected |
+| `⌘/Ctrl ,` | Open settings |
 
-## 下载与上手
+## Download & getting started
 
-从 [GitHub Releases](https://github.com/Tairraos/calcbook/releases) 下载对应平台的安装包（macOS Apple Silicon / Intel、Windows、Linux）。macOS 版本未签名公证，首次打开如被拦下，在访达中右键选「打开」即可。
+Grab the installer for your platform from [GitHub Releases](https://github.com/Tairraos/calcbook/releases) (macOS Apple Silicon / Intel, Windows, Linux). The macOS build is unsigned and un-notarized; if it's blocked on first open, right-click and choose "Open".
 
-不想安装也可以从源码运行：
+Prefer running from source:
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm dev                 # 浏览器预览，http://127.0.0.1:1420
-pnpm desktop             # 独立 Tauri 桌面窗口
+pnpm dev                 # browser preview, http://127.0.0.1:1420
+pnpm desktop             # standalone Tauri desktop window
 ```
 
-需要 Node.js 22.18+（推荐 24 LTS）、pnpm 10.25；桌面还需要 Rust stable（macOS 装 Xcode Command Line Tools）。
+You need Node.js 22.18+ (24 LTS recommended), pnpm 10.25; for the desktop app also Rust stable (on macOS, Xcode Command Line Tools).
 
-## 数据属于你
+## Your data is yours
 
-- 桌面版笔记保存在 `~/.calcbook/`：每篇笔记一个以标题命名的 `.txt`，设置里可以换到任何你喜欢的文件夹（OneDrive、iCloud 均可）。
-- 笔记是纯 `.txt`：保存时在算式行尾追加 ` = 结果`，导入时剥离重算。你手动放进目录的 `.txt` 也会被识别成笔记，且永远不会被应用删除。
-- 搜索、导出、编辑历史都在本地完成；应用没有任何网络请求。
+- Desktop notes live in `~/.calcbook/`: one `.txt` per note named after its title, and you can move storage to any folder you like (OneDrive and iCloud work fine) in settings.
+- Notes are plain `.txt`: saving appends ` = result` to computed lines, importing strips and recomputes them. `.txt` files you drop in yourself are picked up as notes and are never deleted or rewritten by the app.
+- The UI speaks English and Chinese — switch with the button next to the theme toggle; Chinese units always calculate, and the result follows your interface language.
+- Search, export and edit history all happen locally; the app makes no network requests.
 
-## 参与
+## Participating
 
-欢迎 issue 与 PR：修一个错字、报一个算错的例子、补一个想要的单位，都是很好的第一步。动手前请读一眼 [AGENTS.md](AGENTS.md) 与[文档索引](docs/index.md)，了解项目边界与验证方式；小步提交，附上能复现的例子。
+Issues and PRs are welcome: fixing a typo, reporting a miscalculated example, or adding a missing unit are all great first steps. Before diving in, read [AGENTS.md](AGENTS.md) and the [docs index](docs/index.md) for project boundaries and how things are verified. Small steps, with reproducible examples.
 
-## 开发
+中文说明见 [README.zh.md](README.zh.md)。
+
+## Development
 
 ```sh
-pnpm check               # 文档/架构 + lint + 类型 + 测试 + 前端构建
-pnpm check:native        # Rust fmt + clippy + 持久化测试
-pnpm bench               # 300 行计算性能预算
-pnpm desktop:build       # 本机生成未签名 .app
+pnpm check               # docs/architecture gate + lint + types + tests + production build
+pnpm check:native        # Rust fmt + clippy + persistence tests
+pnpm bench               # 300-line calculation performance budget
+pnpm desktop:build       # unsigned .app on this machine
 ```
 
-架构与产品契约见 [ARCHITECTURE.md](ARCHITECTURE.md)、[产品范围](docs/product-specs/mvp.md) 与 [AGENTS.md](AGENTS.md)。
+Architecture and product contracts: [ARCHITECTURE.md](ARCHITECTURE.md), [product scope](docs/product-specs/mvp.md) and [AGENTS.md](AGENTS.md).
 
 ## License
 
