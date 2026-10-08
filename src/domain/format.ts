@@ -42,7 +42,10 @@ function commentIndex(source: string): number {
 
 export function serializeNoteBody(
   body: string,
-  options: { unitStyle?: "free" | "chinese" | "lower" | "upper" } = {},
+  options: {
+    unitStyle?: "free" | "chinese" | "lower" | "upper";
+    lang?: "zh" | "en";
+  } = {},
 ): string {
   return evaluateNotebook(body, options)
     .map((line) => {

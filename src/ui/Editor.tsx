@@ -10,8 +10,10 @@ import {
   useState,
 } from "react";
 import type { LineResult } from "../domain/calculation.ts";
+import type { Lang } from "../domain/messages.ts";
 import { MAX_NOTE_LENGTH } from "../domain/notebook.ts";
 import type { MatchRange } from "../domain/search.ts";
+import { makeT } from "./i18n.ts";
 
 type Props = {
   body: string;
@@ -29,6 +31,7 @@ type Props = {
   activeMatchIndex?: number;
   // 点击结果列「检查算式」：把光标定位到该行行尾（含滚动与焦点返还）
   onGotoLineEnd?: (line: number) => void;
+  lang: Lang;
 };
 
 // 行内匹配段（相对行首的偏移），active 为当前匹配
@@ -142,7 +145,9 @@ export function Editor({
   findMatches,
   activeMatchIndex,
   onGotoLineEnd,
+  lang,
 }: Props) {
+  const t = makeT(lang);
   const [scrollLeft, setScrollLeft] = useState(0);
   // 每行行首的正文绝对偏移（镜像行与正文行 1:1）
   const lineStarts = useMemo(() => {
@@ -264,15 +269,15 @@ export function Editor({
     <div className="editor-scroll">
       <div className="editor-columns-label">
         <span className="editor-columns-title">
-          <span aria-hidden="true">笔记与算式</span>
+          <span aria-hidden="true">{t("notesAndExpressions")}</span>
           {!readOnly && (
             <span className="quick-insert">
-              <span aria-hidden="true">（便捷输入：</span>
+              <span aria-hidden="true">{t("quickInsertPrefix")}</span>
               <button
                 type="button"
                 className="quick-insert-key"
-                title="插入乘号 ×"
-                aria-label="插入乘号"
+                title={`${t("insertMultiply")} ×`}
+                aria-label={`${t("insertMultiply")} ×`}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => insertSymbol("×")}
               >
@@ -281,8 +286,8 @@ export function Editor({
               <button
                 type="button"
                 className="quick-insert-key"
-                title="插入除号 ÷"
-                aria-label="插入除号"
+                title={`${t("insertDivide")} ÷`}
+                aria-label={`${t("insertDivide")} ÷`}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => insertSymbol("÷")}
               >
@@ -291,18 +296,18 @@ export function Editor({
               <button
                 type="button"
                 className="quick-insert-key"
-                title="插入千分号 ‰"
-                aria-label="插入千分号"
+                title={`${t("insertPerMille")} ‰`}
+                aria-label={`${t("insertPerMille")} ‰`}
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={() => insertSymbol("‰")}
               >
                 ‰
               </button>
-              <span aria-hidden="true">）</span>
+              <span aria-hidden="true">{t("quickInsertSuffix")}</span>
             </span>
           )}
         </span>
-        <span aria-hidden="true">结果</span>
+        <span aria-hidden="true">{t("resultColumn")}</span>
       </div>
       <div className="editor-grid" style={{ minHeight: height }}>
         <div className="line-numbers" aria-hidden="true">
@@ -327,11 +332,11 @@ export function Editor({
                 {"\u200b"}
               </div>
             ))}
-            {!body && <span className="editor-placeholder">写下一个想法，或试试 12 × 8</span>}
+            {!body && <span className="editor-placeholder">{t("editorPlaceholder")}</span>}
           </div>
           <textarea
             ref={editorRef}
-            aria-label="笔记内容"
+            aria-label={t("noteBody")}
             className="editor-input"
             value={body}
             onChange={(event) => {
@@ -356,7 +361,7 @@ export function Editor({
             readOnly={readOnly}
           />
         </div>
-        <section className="editor-results" aria-label="逐行计算结果">
+        <section className="editor-results" aria-label={t("lineResults")}>
           {results.map((line, index) => (
             <div
               className={`result-row ${index === activeLine ? "is-active" : ""} ${
@@ -369,8 +374,8 @@ export function Editor({
                 <button
                   type="button"
                   className="line-result"
-                  title={`复制结果：${line.raw}`}
-                  aria-label={`复制第 ${index + 1} 行结果：${line.display}`}
+                  title={t("copyResult", { raw: line.raw ?? "" })}
+                  aria-label={t("copyLineResult", { n: index + 1, value: line.display ?? "" })}
                   onClick={() => {
                     onCopy(line.raw ?? "");
                     setCopiedLine(index);
@@ -389,7 +394,7 @@ export function Editor({
                 <button
                   type="button"
                   className="line-error"
-                  aria-label={`第 ${index + 1} 行：${line.error}，点击定位到行尾`}
+                  aria-label={t("lineWithError", { n: index + 1, error: line.error ?? "" })}
                   onClick={() => onGotoLineEnd?.(index)}
                   onMouseEnter={(event) =>
                     planTipDirection(event.currentTarget, index, line.error ?? "")
@@ -399,7 +404,7 @@ export function Editor({
                   }
                 >
                   <TriangleAlert size={13} />
-                  <span>检查算式</span>
+                  <span>{t("checkLine")}</span>
                   <span
                     className={`error-tooltip ${
                       tipPlan?.line === index && tipPlan.up ? "is-up" : ""

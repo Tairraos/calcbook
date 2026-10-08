@@ -17,7 +17,7 @@ pub const MAX_HISTORY_LIMIT_KB: u32 = 65536;
 pub const MAX_NOTES: usize = 100;
 
 /// 扫描结果：正文完全以 .txt 文件为事实来源（数据目录 = 笔记，recycled/ = 废纸篓），
-/// workspace.json 只保存主题、当前笔记与格式设置。
+/// workspace.json 只保存主题、界面语言、当前笔记与格式设置。
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Payload {
@@ -25,6 +25,8 @@ pub struct Payload {
     notes: Vec<PayloadNote>,
     active_id: Option<String>,
     theme: String,
+    #[serde(default = "default_ui_language", rename = "uiLanguage")]
+    ui_language: String,
     #[serde(default)]
     format: FormatSettings,
     #[serde(default = "default_history_limit_kb", rename = "historyLimitKB")]
@@ -33,6 +35,14 @@ pub struct Payload {
 
 fn default_history_limit_kb() -> u32 {
     DEFAULT_HISTORY_LIMIT_KB
+}
+
+fn default_ui_language() -> String {
+    "en".into()
+}
+
+fn valid_ui_language(lang: &str) -> bool {
+    matches!(lang, "zh" | "en")
 }
 
 /// 单篇笔记：id 即文件相对路径（`预算.txt` 或 `recycled/预算.txt`）。
@@ -50,13 +60,15 @@ pub struct PayloadNote {
     trashed: bool,
 }
 
-/// 落盘的工作区设置（主题、当前笔记、格式、历史空间），不含笔记清单。
+/// 落盘的工作区设置（主题、界面语言、当前笔记、格式、历史空间），不含笔记清单。
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 struct WorkspaceSettings {
     version: u8,
     active_id: Option<String>,
     theme: String,
+    #[serde(default = "default_ui_language", rename = "uiLanguage")]
+    ui_language: String,
     #[serde(default)]
     format: FormatSettings,
     #[serde(default = "default_history_limit_kb", rename = "historyLimitKB")]
@@ -406,6 +418,7 @@ pub fn scan(directory: &Path) -> Result<Payload, String> {
         notes,
         active_id,
         theme: settings.theme,
+        ui_language: settings.ui_language,
         format: settings.format,
         history_limit_kb: settings.history_limit_kb,
     })
@@ -420,6 +433,7 @@ fn read_workspace_settings(directory: &Path) -> Result<WorkspaceSettings, String
                 version: 1,
                 active_id: None,
                 theme: "light".into(),
+                ui_language: default_ui_language(),
                 format: FormatSettings::default(),
                 history_limit_kb: default_history_limit_kb(),
             });
@@ -442,6 +456,10 @@ fn read_workspace_settings(directory: &Path) -> Result<WorkspaceSettings, String
         .map_err(|error| format!("笔记文件损坏，原文件已保留：{error}"))?;
     if !valid_theme(&settings.theme) {
         return Err("主题配置无效".into());
+    }
+    // 手工改动的界面语言非法时回落英文，不阻塞启动
+    if !valid_ui_language(&settings.ui_language) {
+        settings.ui_language = default_ui_language();
     }
     settings.format.validate()?;
     // 手工改动的历史空间超限时钳制，不阻塞启动
@@ -500,6 +518,7 @@ fn migrate_legacy(directory: &Path) -> Result<(), String> {
         version: 1,
         active_id: stored.active_id.clone(),
         theme: stored.theme.clone(),
+        ui_language: default_ui_language(),
         format,
         history_limit_kb: default_history_limit_kb(),
     };
@@ -511,11 +530,15 @@ pub fn save_settings(
     directory: &Path,
     theme: &str,
     active_id: Option<&str>,
+    ui_language: &str,
     format: &FormatSettings,
     history_limit_kb: u32,
 ) -> Result<(), String> {
     if !valid_theme(theme) {
         return Err("主题配置无效".into());
+    }
+    if !valid_ui_language(ui_language) {
+        return Err("界面语言配置无效".into());
     }
     format.validate()?;
     if history_limit_kb > MAX_HISTORY_LIMIT_KB {
@@ -541,6 +564,7 @@ pub fn save_settings(
         version: 1,
         active_id: active_id.map(|id| id.to_string()),
         theme: theme.to_string(),
+        ui_language: ui_language.to_string(),
         format: format.clone(),
         history_limit_kb,
     };
@@ -1568,6 +1592,7 @@ mod tests {
             &directory,
             "dark",
             Some("预算.txt"),
+            "en",
             &FormatSettings::default(),
             DEFAULT_HISTORY_LIMIT_KB,
         )
@@ -1580,6 +1605,17 @@ mod tests {
             &directory,
             "nope",
             None,
+            "en",
+            &FormatSettings::default(),
+            DEFAULT_HISTORY_LIMIT_KB
+        )
+        .is_err());
+        // 界面语言非法被拒绝
+        assert!(save_settings(
+            &directory,
+            "light",
+            None,
+            "fr",
             &FormatSettings::default(),
             DEFAULT_HISTORY_LIMIT_KB
         )
@@ -1590,6 +1626,7 @@ mod tests {
             &directory,
             "light",
             Some("预算.txt"),
+            "en",
             &FormatSettings::default(),
             DEFAULT_HISTORY_LIMIT_KB,
         )
@@ -1819,7 +1856,15 @@ mod tests {
             "重启前的历史",
         )
         .unwrap();
-        save_settings(&directory, "light", None, &FormatSettings::default(), 0).unwrap();
+        save_settings(
+            &directory,
+            "light",
+            None,
+            "en",
+            &FormatSettings::default(),
+            0,
+        )
+        .unwrap();
         scan(&directory).unwrap();
         assert!(!directory.join("history").exists());
         fs::remove_dir_all(directory).unwrap();
@@ -1850,6 +1895,7 @@ mod tests {
             &current,
             "light",
             None,
+            "en",
             &FormatSettings::default(),
             DEFAULT_HISTORY_LIMIT_KB,
         )

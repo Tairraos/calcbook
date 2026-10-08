@@ -11,6 +11,7 @@ import {
   type SymbolNode,
   type Unit,
 } from "mathjs";
+import { type Lang, msg } from "./messages.ts";
 import {
   attachMath,
   cancelSameDimension,
@@ -141,11 +142,11 @@ export function restyleBrackets(expression: string): string {
 }
 
 // 括号嵌套层数：最多 3 层（{[()]}），超出报错。normalize 已把三种括号统一成圆括号。
-function checkBracketDepth(expression: string): void {
+function checkBracketDepth(expression: string, lang: Lang): void {
   let depth = 0;
   for (const character of expression) {
     if (character === "(") {
-      if (++depth > 3) throw new Error("括号嵌套层数越限");
+      if (++depth > 3) throw new Error(msg(lang, "bracketDepth"));
     } else if (character === ")") {
       depth--;
     }
@@ -291,13 +292,13 @@ function normalize(source: string): string {
   return expression;
 }
 
-function validValue(value: unknown): CalcValue {
-  if (!isBigNumber(value) && !isUnit(value)) throw new Error("这里只支持数字和单位计算");
+function validValue(value: unknown, lang: Lang): CalcValue {
+  if (!isBigNumber(value) && !isUnit(value)) throw new Error(msg(lang, "onlyNumbersUnits"));
   const numeric: unknown = isUnit(value) ? value.value : value;
-  if (numeric === null) throw new Error("请在单位前输入数字");
+  if (numeric === null) throw new Error(msg(lang, "numberBeforeUnit"));
   const decimal = isBigNumber(numeric) ? numeric : math.bignumber(numeric as number);
-  if (!decimal.isFinite()) throw new Error("结果无效，请检查除零或函数的取值范围");
-  if (decimal.abs().gt("1e308")) throw new Error("数值过大，请控制在 1e308 以内");
+  if (!decimal.isFinite()) throw new Error(msg(lang, "resultInvalid"));
+  if (decimal.abs().gt("1e308")) throw new Error(msg(lang, "tooLarge"));
   return value;
 }
 
@@ -308,7 +309,7 @@ function canonicalToken(component: { prefix: unknown; unit: { name: string } }):
   return `${prefixName}${component.unit.name}`;
 }
 
-function validateTree(tree: MathNode, scope: Scope): SeenUnit[] {
+function validateTree(tree: MathNode, scope: Scope, lang: Lang): SeenUnit[] {
   let count = 0;
   const seen = new Map<string, SeenUnit>();
   const addSeen = (token: string, chinese: boolean, carried = false) => {
@@ -348,7 +349,7 @@ function validateTree(tree: MathNode, scope: Scope): SeenUnit[] {
     switch (node.type) {
       case "ConstantNode": {
         const value: unknown = (node as ConstantNode).value;
-        validValue(typeof value === "number" ? math.bignumber(value) : value);
+        validValue(typeof value === "number" ? math.bignumber(value) : value, lang);
         break;
       }
       case "SymbolNode": {
@@ -359,21 +360,23 @@ function validateTree(tree: MathNode, scope: Scope): SeenUnit[] {
           !functions.has(name) &&
           !math.Unit.isValuelessUnit(name)
         ) {
-          throw new Error(`“${name}”尚未定义`);
+          throw new Error(msg(lang, "undefinedSymbol", { name }));
         }
         if (!constants.has(name) && !functions.has(name)) see(name);
         break;
       }
       case "OperatorNode":
-        if (!operators.has((node as OperatorNode).fn)) throw new Error("暂不支持这个运算符");
+        if (!operators.has((node as OperatorNode).fn))
+          throw new Error(msg(lang, "unsupportedOperator"));
         break;
       case "FunctionNode":
-        if (!functions.has((node as FunctionNode).fn.name)) throw new Error("暂不支持这个函数");
+        if (!functions.has((node as FunctionNode).fn.name))
+          throw new Error(msg(lang, "unsupportedFunction"));
         break;
       case "ParenthesisNode":
         break;
       default:
-        throw new Error("仅支持算式，不支持脚本、数组或属性访问");
+        throw new Error(msg(lang, "expressionOnly"));
     }
     node.forEach((child) => {
       walk(child, depth + 1);
@@ -384,9 +387,9 @@ function validateTree(tree: MathNode, scope: Scope): SeenUnit[] {
   const checkPowers = (node: MathNode) => {
     node.forEach(checkPowers);
     if (node.type === "OperatorNode" && (node as OperatorNode).fn === "pow") {
-      const exponent = validValue((node as OperatorNode).args[1].evaluate(scope));
+      const exponent = validValue((node as OperatorNode).args[1].evaluate(scope), lang);
       if (!isBigNumber(exponent) || exponent.abs().gt(1000))
-        throw new Error("指数绝对值不能超过 1000");
+        throw new Error(msg(lang, "exponentTooLarge"));
     }
   };
   checkPowers(tree);
@@ -420,11 +423,11 @@ export function formatUnitSuffix(
 
 // 数字宽度：输入数字整数部分最长 16 位、小数部分最长 4 位，超出不计算。
 // 在 normalize 之后逐个扫描数字字面量（千分位逗号此时已剥离）。
-function checkNumberWidth(expression: string): void {
+function checkNumberWidth(expression: string, lang: Lang): void {
   for (const match of expression.matchAll(/\d*\.?\d+/g)) {
     const [integer = "", decimal = ""] = match[0].split(".");
     if (integer.replace(/^0+(?=\d)/, "").length > 16 || decimal.length > 4)
-      throw new Error("数字宽度超限");
+      throw new Error(msg(lang, "numberWidth"));
   }
 }
 
@@ -432,10 +435,10 @@ function checkNumberWidth(expression: string): void {
 // 千位分隔只作用于整数部分——4 位小数会被全串正则误切（666.6667 → 666.6,667）。
 // 舍入后整数部分超过 16 位（含进位到 17 位）报「计算结果数字宽度超限」，
 // 与输入侧的「数字宽度超限」区分，不用科学计数法。
-function formatDisplayNumber(numeric: BigNumber | number, thousands = true): string {
+function formatDisplayNumber(numeric: BigNumber | number, lang: Lang, thousands = true): string {
   const decimal = isBigNumber(numeric) ? numeric : math.bignumber(numeric);
   const rounded = decimal.toDecimalPlaces(4);
-  if (rounded.abs().trunc().toFixed().length > 16) throw new Error("计算结果数字宽度超限");
+  if (rounded.abs().trunc().toFixed().length > 16) throw new Error(msg(lang, "resultNumberWidth"));
   if (rounded.isZero()) return "0";
   const [intPart, decimalPart] = rounded.toFixed().split(".");
   const grouped = thousands ? intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",") : intPart;
@@ -446,7 +449,7 @@ export function formatValue(
   value: CalcValue,
   language: ResultLanguage = "lower",
   chineseNames: Record<string, string> = {},
-  options: { unitSpacing?: boolean; thousands?: boolean } = {},
+  options: { unitSpacing?: boolean; thousands?: boolean; lang?: Lang } = {},
 ): { raw: string; display: string } {
   const raw = formatUnitSuffix(
     math.format(value, { precision: 14, lowerExp: -8, upperExp: 16 }),
@@ -454,7 +457,9 @@ export function formatValue(
     chineseNames,
   );
   const display = formatUnitSuffix(
-    math.format(value, (numeric) => formatDisplayNumber(numeric, options.thousands ?? true)),
+    math.format(value, (numeric) =>
+      formatDisplayNumber(numeric, options.lang ?? "zh", options.thousands ?? true),
+    ),
     language,
     chineseNames,
     options.unitSpacing ?? true,
@@ -479,25 +484,26 @@ function hasExplicitConversion(tree: MathNode): boolean {
 
 // 赋值名撞上保留字时给出具体类别：单位、函数、常量、汇总、转换关键字都不可用作变量。
 const conversionKeywords = new Set(["to", "in", "as", "of", "on", "off"]);
-function reservedConflict(name: string): string | null {
-  if (functions.has(name)) return `保留字冲突：“${name}”是函数名，请换一个变量名`;
-  if (constants.has(name)) return `保留字冲突：“${name}”是常量名，请换一个变量名`;
-  if (summaries.has(name)) return `保留字冲突：“${name}”是汇总关键字，请换一个变量名`;
-  if (name === "prev") return `保留字冲突：“prev”指上一行的结果，请换一个变量名`;
-  if (conversionKeywords.has(name)) return `保留字冲突：“${name}”是单位转换关键字，请换一个变量名`;
-  if (aliases[name] || math.Unit.isValuelessUnit(name))
-    return `保留字冲突：“${name}”是单位名，请换一个变量名`;
+function reservedConflict(name: string, lang: Lang): string | null {
+  if (functions.has(name)) return msg(lang, "conflictFunction", { name });
+  if (constants.has(name)) return msg(lang, "conflictConstant", { name });
+  if (summaries.has(name)) return msg(lang, "conflictSummary", { name });
+  if (name === "prev") return msg(lang, "conflictPrev", { name });
+  if (conversionKeywords.has(name)) return msg(lang, "conflictConversion", { name });
+  if (aliases[name] || math.Unit.isValuelessUnit(name)) return msg(lang, "conflictUnit", { name });
   return null;
 }
 
 // 结果单位规则：制式优先级 公制 > 英制 > 市制；同制式内向更小的单位靠拢；
-// 结果的单位语言跟随算式（中文 > 英文小写 > 英文大写），设置里「单位写法」可整体强制。
+// 结果的单位语言按界面语言排序（中文界面：中文 > 英文小写 > 英文大写；英文界面：英文优先），
+// 设置里「单位写法」可整体强制。
 function applyResultUnitRule(
   value: CalcValue,
   seen: SeenUnit[],
   forcedLanguage?: ResultLanguage,
+  lang: Lang = "zh",
 ): { value: CalcValue; language: ResultLanguage } {
-  const language: ResultLanguage = forcedLanguage ?? seenLanguage(seen);
+  const language: ResultLanguage = forcedLanguage ?? seenLanguage(seen, lang);
   if (!isUnit(value)) return { value, language };
   // 汇总 seen：行内 token + 结果自身分量（scope 变量的分量已在树里收集）。
   const present: SeenUnit[] = [...seen];
@@ -556,13 +562,15 @@ function applyResultUnitRule(
   return { value, language };
 }
 
-// 算式语言：中文 > 英文小写 > 英文大写。大小写只看本行字面写下的 token（inLine）——
-// validateTree 的 token 已规范化、变量携带的单位没有本行写法，都按小写输出约定处理；
-// 只有整行字面全大写才算英文大写。
-function seenLanguage(seen: SeenUnit[]): ResultLanguage {
-  if (seen.some((unit) => unit.chinese)) return "chinese";
+// 算式语言优先级：中文界面 中文 > 英文小写 > 英文大写；英文界面 英文优先（小写 > 大写 > 中文）。
+// 大小写只看本行字面写下的 token（inLine）——validateTree 的 token 已规范化、变量携带的单位
+// 没有本行写法，都按小写输出约定处理；只有整行字面全大写才算英文大写。
+function seenLanguage(seen: SeenUnit[], lang: Lang): ResultLanguage {
   const written = seen.filter((unit) => unit.inLine);
-  return written.length && written.every((unit) => unit.upper) ? "upper" : "lower";
+  const allUpper = written.length > 0 && written.every((unit) => unit.upper);
+  if (lang === "en") return allUpper ? "upper" : "lower";
+  if (seen.some((unit) => unit.chinese)) return "chinese";
+  return allUpper ? "upper" : "lower";
 }
 
 // 复合单位（如速度）在制式不同时按分量换算到目标制式。
@@ -606,8 +614,9 @@ export function calculate(
   percentages = new Set<string>(),
   zhUnits = new Set<string>(),
   forcedLanguage?: ResultLanguage,
+  lang: Lang = "zh",
 ) {
-  if (source.length > 1000) throw new Error("单行算式最多 1000 个字符");
+  if (source.length > 1000) throw new Error(msg(lang, "lineTooLong"));
   const rewritten = normalize(source.trim()).replace(/[\p{L}_][\p{L}\p{N}_]*/gu, (name) => {
     const value = scope.get(name);
     return percentages.has(name) && isBigNumber(value) ? `${value.times(100).toString()}%` : name;
@@ -615,18 +624,19 @@ export function calculate(
   // 百分比标志：整个算式就是一个 %/‰ 数字时，赋值变量携带相对语义（折扣 = 10% → 200 - 折扣 = 180）
   const percentage = /^\(?\s*\d+(?:\.\d+)?[‰%]\s*\)?$/.test(rewritten.trim());
   const expression = desugarPercents(rewritten);
-  if (!expression) throw new Error("先输入一个算式");
-  checkNumberWidth(expression);
-  checkBracketDepth(expression);
+  if (!expression) throw new Error(msg(lang, "emptyExpression"));
+  checkNumberWidth(expression, lang);
+  checkBracketDepth(expression, lang);
   const tree = math.parse(expression);
   // 行内单位 token（大小写/中文）+ 作用域变量携带的单位
-  const seen = [...scanUnitTokens(source), ...validateTree(tree, scope)];
+  const seen = [...scanUnitTokens(source), ...validateTree(tree, scope, lang)];
   // 中文写法记忆：本行字面写下的中文单位记入本篇集合（evaluateNotebook 逐行持有）；
-  // 此前以中文出现过的单位经变量（赋值/prev）携带进算式时沿用中文呈现。
+  // 中文界面下，此前以中文出现过的单位经变量（赋值/prev）携带进算式时沿用中文呈现。
+  // 英文界面英文优先，不回涂中文。
   for (const unit of seen) {
     const key = unit.token.toLowerCase();
     if (unit.chinese) zhUnits.add(key);
-    else if (unit.carried && zhUnits.has(key)) unit.chinese = true;
+    else if (lang === "zh" && unit.carried && zhUnits.has(key)) unit.chinese = true;
   }
   // 同一单位有多种中文写法（公斤/千克）时冲突用规范名；只有一种写法则保留原写法。
   // 变量携带的单位本行没有用户写法，不参与写法统计，交给 enToZh 兜底。
@@ -643,22 +653,22 @@ export function calculate(
     chineseNames[canonical] =
       forms.size === 1 ? [...forms][0] : (enToZh[canonical] ?? [...forms][0]);
   }
-  let value = validValue(tree.evaluate(scope));
+  let value = validValue(tree.evaluate(scope), lang);
   let language: ResultLanguage = "lower";
   if (isUnit(value)) {
     const cancelled = cancelSameDimension(value);
     const explicit = hasExplicitConversion(tree);
-    language = forcedLanguage ?? (explicit ? seenLanguage(seen) : "lower");
+    language = forcedLanguage ?? (explicit ? seenLanguage(seen, lang) : "lower");
     if (cancelled.cancelled) {
       value = cancelled.value as CalcValue;
-      // 约分后的剩余单位同样跟随算式语言（中文 > 小写 > 大写），不退回小写英文。
-      language = forcedLanguage ?? seenLanguage(seen);
+      // 约分后的剩余单位同样跟随算式语言优先级，不退回小写英文。
+      language = forcedLanguage ?? seenLanguage(seen, lang);
     } else if (explicit) {
       // 显式 to 的目标单位原样呈现，不做制式合并、不做最小单位靠拢。
       value.fixPrefix = true;
       value.skipAutomaticSimplification = true;
     } else {
-      const applied = applyResultUnitRule(value, seen, forcedLanguage);
+      const applied = applyResultUnitRule(value, seen, forcedLanguage, lang);
       value = applied.value as Unit;
       language = applied.language;
     }
@@ -677,21 +687,21 @@ export function calculate(
     percentage,
     language,
     chineseNames,
-    ...formatValue(value, language, chineseNames),
+    ...formatValue(value, language, chineseNames, { lang }),
   };
 }
 
-function readableError(error: unknown): string {
-  const message = error instanceof Error ? error.message : "无法计算这一行";
+function readableError(error: unknown, lang: Lang = "zh"): string {
+  const message = error instanceof Error ? error.message : msg(lang, "cannotCompute");
   if (/Units do not match|different base|units must match|unit mismatch/i.test(message)) {
-    return "单位不兼容；不同货币暂不支持换算";
+    return msg(lang, "incompatibleUnits");
   }
   if (
     /Unexpected|Syntax|Value expected|Parenthesis|End of expression|operator|Cannot convert/i.test(
       message,
     )
   ) {
-    return "算式还不完整，检查数字、单位和括号";
+    return msg(lang, "incomplete");
   }
   return message;
 }
@@ -702,8 +712,10 @@ export function evaluateNotebook(
     unitSpacing?: boolean;
     resultThousands?: boolean;
     unitStyle?: "free" | "chinese" | "lower" | "upper";
+    lang?: Lang;
   } = {},
 ): LineResult[] {
+  const lang = options.lang ?? "zh";
   const scope: Scope = new Map();
   const percentages = new Set<string>();
   const zhUnits = new Set<string>();
@@ -751,7 +763,7 @@ export function evaluateNotebook(
       if (!intent) return { source, kind: "note" };
       try {
         if (name) {
-          const conflict = reservedConflict(name);
+          const conflict = reservedConflict(name, lang);
           if (conflict) throw new Error(conflict);
           scope.delete(name);
           percentages.delete(name);
@@ -761,13 +773,13 @@ export function evaluateNotebook(
         let language: ResultLanguage = "lower";
         let chineseNames: Record<string, string> = {};
         if (isSummary) {
-          if (blockHasError) throw new Error("本段含有错误，请修正后再汇总");
-          if (!block.length) throw new Error("本段还没有可汇总的结果");
+          if (blockHasError) throw new Error(msg(lang, "blockHasError"));
+          if (!block.length) throw new Error(msg(lang, "blockEmpty"));
           value = block
             .slice(1)
-            .reduce<CalcValue>((total, item) => validValue(math.add(total, item)), block[0]);
+            .reduce<CalcValue>((total, item) => validValue(math.add(total, item), lang), block[0]);
           if (["avg", "average", "平均"].includes(expression))
-            value = validValue(math.divide(value, math.bignumber(block.length)));
+            value = validValue(math.divide(value, math.bignumber(block.length)), lang);
           // 汇总同样按「制式优先级 + 最小单位」规则呈现。
           const seenUnits: SeenUnit[] = [];
           for (const item of block) {
@@ -786,18 +798,25 @@ export function evaluateNotebook(
               }
             }
           }
+          const pick = (order: ResultLanguage[]) =>
+            order.find((item) => blockLanguages.includes(item)) ?? "lower";
           const blockLanguage: ResultLanguage =
             forcedLanguage ??
-            (blockLanguages.some((item) => item === "chinese")
-              ? "chinese"
-              : blockLanguages.some((item) => item === "lower")
-                ? "lower"
-                : "upper");
-          const applied = applyResultUnitRule(value, seenUnits, blockLanguage);
+            (lang === "en"
+              ? pick(["lower", "upper", "chinese"])
+              : pick(["chinese", "lower", "upper"]));
+          const applied = applyResultUnitRule(value, seenUnits, blockLanguage, lang);
           value = applied.value as CalcValue;
           language = applied.language;
         } else {
-          const calculation = calculate(expression, scope, percentages, zhUnits, forcedLanguage);
+          const calculation = calculate(
+            expression,
+            scope,
+            percentages,
+            zhUnits,
+            forcedLanguage,
+            lang,
+          );
           value = calculation.value;
           percentage = calculation.percentage;
           language = calculation.language;
@@ -818,13 +837,14 @@ export function evaluateNotebook(
           ...formatValue(value, language, chineseNames, {
             unitSpacing: options.unitSpacing ?? true,
             thousands: options.resultThousands ?? true,
+            lang,
           }),
         };
       } catch (error) {
         scope.delete("prev");
         percentages.delete("prev");
         blockHasError = true;
-        return { source, kind: "error", error: readableError(error) };
+        return { source, kind: "error", error: readableError(error, lang) };
       }
     });
 }
@@ -840,10 +860,17 @@ export function convertUnitQuantity(value: number, from: string, to: string): nu
   }
 }
 
-export function calculateInput(expression: string) {
+export function calculateInput(expression: string, lang: Lang = "zh") {
   try {
-    const { value, language } = calculate(expression);
-    const display = math.format(value, (numeric) => formatDisplayNumber(numeric, true));
+    const { value, language } = calculate(
+      expression,
+      new Map(),
+      new Set(),
+      new Set(),
+      undefined,
+      lang,
+    );
+    const display = math.format(value, (numeric) => formatDisplayNumber(numeric, lang, true));
     return {
       ok: true as const,
       raw: formatUnitSuffix(
@@ -853,6 +880,6 @@ export function calculateInput(expression: string) {
       display: formatUnitSuffix(display, language, {}, false),
     };
   } catch (error) {
-    return { ok: false as const, error: readableError(error) };
+    return { ok: false as const, error: readableError(error, lang) };
   }
 }

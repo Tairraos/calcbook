@@ -10,19 +10,23 @@ import { BookOpen, Delete, History, PenLine } from "lucide-react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { calculateInput } from "./domain/calculation.ts";
 import { initialKeypad, type KeypadState, pressKeypad } from "./domain/keypad.ts";
+import type { Lang } from "./domain/messages.ts";
 import {
   CALCULATOR_HIDE_AFTER_MS,
   CALCULATOR_INSERT_EVENT,
+  CALCULATOR_LANG_EVENT,
   CALCULATOR_READY_EVENT,
   CALCULATOR_THEME_EVENT,
   enableTitleDragRegions,
   hideCalculatorWindow,
   isDesktopApp,
   NARROW_SIZE,
+  readStoredLanguage,
   readStoredTheme,
   WIDE_SIZE,
 } from "./platform/storage.ts";
 import { IconButton } from "./ui/IconButton.tsx";
+import { makeT } from "./ui/i18n.ts";
 import { playKeyClick } from "./ui/keySound.ts";
 
 const keys = [
@@ -49,19 +53,33 @@ const keys = [
   "%",
   "=",
 ];
-const keyLabels: Record<string, string> = {
-  AC: "清空",
-  Backspace: "退格",
-  "±": "正负切换",
-  "÷": "除",
-  "×": "乘",
-  "-": "减",
-  "+": "加",
-  "=": "等于",
-  "(": "左括号",
-  ")": "右括号",
-  ".": "小数点",
-  "%": "百分比/千分号切换",
+const keyLabels: Record<
+  string,
+  | "keyClear"
+  | "keyBackspace"
+  | "keySign"
+  | "keyDivide"
+  | "keyMultiply"
+  | "keySubtract"
+  | "keyAdd"
+  | "keyEquals"
+  | "keyLeftParen"
+  | "keyRightParen"
+  | "keyDot"
+  | "keyPercent"
+> = {
+  AC: "keyClear",
+  Backspace: "keyBackspace",
+  "±": "keySign",
+  "÷": "keyDivide",
+  "×": "keyMultiply",
+  "-": "keySubtract",
+  "+": "keyAdd",
+  "=": "keyEquals",
+  "(": "keyLeftParen",
+  ")": "keyRightParen",
+  ".": "keyDot",
+  "%": "keyPercent",
 };
 
 // 物理键 → 按键：回车是等于，C 是清空，x 与 * 都是乘号，/ 与 \ 都是除号（显示为 × ÷）。
@@ -102,11 +120,14 @@ export function CalculatorWindow() {
   const [state, setState] = useState<KeypadState>(initialKeypad);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [pressedKey, setPressedKey] = useState<string | null>(null);
+  // 界面语言：浏览器预览读 localStorage；桌面版由主窗经 CALCULATOR_LANG_EVENT 同步。
+  const [lang, setLang] = useState<Lang>(() => readStoredLanguage());
+  const t = makeT(lang);
   // 按压态对应的物理键 code，keyup 按 code 配对清除（Shift 组合键松开顺序不影响）
   const pressedCodeRef = useRef<string | null>(null);
   const answerRef = useRef<HTMLOutputElement>(null);
   const answerTextRef = useRef<HTMLSpanElement>(null);
-  const outcome = state.expression ? calculateInput(state.expression) : null;
+  const outcome = state.expression ? calculateInput(state.expression, lang) : null;
   const display =
     state.result !== null
       ? state.display
@@ -116,8 +137,8 @@ export function CalculatorWindow() {
           ? "…"
           : "0";
 
-  // 主题跟随主窗口：启动读工作区，挂载完成后向主窗要一次当前配色（防创建期竞态），
-  // 之后主窗切换配色时经事件同步。
+  // 主题与语言跟随主窗口：启动读工作区，挂载完成后向主窗要一次当前值（防创建期竞态），
+  // 之后主窗切换时经事件同步。
   useEffect(() => {
     document.documentElement.dataset.theme = readStoredTheme();
     if (!isDesktopApp) return;
@@ -125,8 +146,12 @@ export function CalculatorWindow() {
     const unlisten = listen<string>(CALCULATOR_THEME_EVENT, (event) => {
       document.documentElement.dataset.theme = event.payload === "dark" ? "dark" : "light";
     });
+    const unlistenLang = listen<string>(CALCULATOR_LANG_EVENT, (event) => {
+      if (event.payload === "zh" || event.payload === "en") setLang(event.payload);
+    });
     return () => {
       void unlisten.then((dispose) => dispose());
+      void unlistenLang.then((dispose) => dispose());
     };
   }, []);
 
@@ -257,25 +282,25 @@ export function CalculatorWindow() {
           <div className="calc-header" data-tauri-drag-region>
             <IconButton
               className="calc-history-toggle"
-              title={historyOpen ? "隐藏最近计算" : "显示最近计算"}
+              title={historyOpen ? t("calcHideRecent") : t("calcShowRecent")}
               aria-pressed={historyOpen}
               onClick={toggleHistory}
             >
               <BookOpen size={13} />
-              历史
+              {t("calcHistory")}
             </IconButton>
           </div>
           <div className="calc-screen">
             <div className="calc-screen-caption">
               {/* 出错时原位替换「随手算一算」，错误消失再换回来——不新增行，键盘不抖动。 */}
               <span className={state.error ? "calc-error" : undefined} role="status">
-                {state.error ?? "随手算一算"}
+                {state.error ?? t("calcIdle")}
               </span>
             </div>
             <input
               className="calc-expression"
-              aria-label="计算器算式"
-              placeholder="输入算式"
+              aria-label={t("calcExpression")}
+              placeholder={t("calcExpressionPlaceholder")}
               value={state.expression}
               readOnly
               tabIndex={-1}
@@ -287,7 +312,12 @@ export function CalculatorWindow() {
                 event.preventDefault();
               }}
             />
-            <output ref={answerRef} className="calc-answer" aria-label="计算器结果" title={display}>
+            <output
+              ref={answerRef}
+              className="calc-answer"
+              aria-label={t("calcAnswer")}
+              title={display}
+            >
               <span ref={answerTextRef}>{display}</span>
             </output>
           </div>
@@ -296,7 +326,7 @@ export function CalculatorWindow() {
               <button
                 key={key}
                 type="button"
-                aria-label={keyLabels[key] ?? key}
+                aria-label={keyLabels[key] ? t(keyLabels[key]) : key}
                 className={`key-num ${key === "=" ? "key-equ" : ""} ${/[÷×+-]/.test(key) ? "key-opt" : ""} ${["AC", "(", ")", "Backspace", "±", "%"].includes(key) ? "key-func" : ""} ${key === pressedKey ? "is-pressed" : ""}`}
                 onPointerDown={(event) => {
                   if (event.button === 0) {
@@ -320,27 +350,27 @@ export function CalculatorWindow() {
           </div>
         </div>
         {historyOpen && (
-          <aside className="calc-history-sidebar" aria-label="最近计算">
+          <aside className="calc-history-sidebar" aria-label={t("calcRecent")}>
             <div className="calc-history-heading">
               <span>
                 <History size={14} />
-                最近计算
+                {t("calcRecent")}
               </span>
               {state.history.length > 0 && (
                 <button
                   type="button"
                   className="history-clear"
-                  title="清空计算历史"
+                  title={t("calcClearTitle")}
                   onClick={() => setState((before) => ({ ...before, history: [] }))}
                 >
-                  清空
+                  {t("calcClear")}
                 </button>
               )}
             </div>
             {state.history.length === 0 ? (
               <div className="history-empty">
                 <span className="history-empty-line" />
-                <span>按下等号，把结果留在这里</span>
+                <span>{t("calcHistoryEmpty")}</span>
               </div>
             ) : (
               <div className="calc-history">
@@ -357,7 +387,7 @@ export function CalculatorWindow() {
                           error: null,
                         }))
                       }
-                      title="使用这个结果继续计算"
+                      title={t("calcUseResult")}
                     >
                       <span>{item.expression}</span>
                       <strong>= {item.result}</strong>
@@ -366,7 +396,7 @@ export function CalculatorWindow() {
                       type="button"
                       className="history-insert"
                       disabled={!isDesktopApp}
-                      title="把这条算式插入笔记"
+                      title={t("calcInsertNote")}
                       onClick={() => void insert(item.expression)}
                     >
                       <PenLine size={13} />

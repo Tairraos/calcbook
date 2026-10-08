@@ -1,10 +1,14 @@
 import { DEFAULT_FORMAT_SETTINGS, type FormatSettings, parseFormatSettings } from "./formatting.ts";
+import { type Lang, msg } from "./messages.ts";
 
 export const MAX_NOTES = 100;
 export const MAX_NOTE_LENGTH = 100_000;
 export const MAX_TITLE_LENGTH = 120;
 export const THEME_IDS = ["light", "dark"] as const;
 export type Theme = (typeof THEME_IDS)[number];
+// 界面语言：英文为出厂默认，zh 由语言按钮切换；旧数据无此字段时按默认。
+export const UI_LANGS = ["en", "zh"] as const;
+export type UiLanguage = (typeof UI_LANGS)[number];
 // 0.6.10 及以前的 paper/midnight 与更早的六套主题，读取时统一迁移到 light/dark。
 const LEGACY_THEMES: Record<string, Theme> = {
   paper: "light",
@@ -33,6 +37,8 @@ export type Workspace = {
   notes: Note[];
   activeId: string | null;
   theme: Theme;
+  // 界面语言（按钮在侧栏设置行，主题按钮旁）；英文优先级同时作用于结果的单位语言。
+  uiLanguage: UiLanguage;
   format: FormatSettings;
   // 每个笔记的历史版本空间上限（KB），0 = 关闭历史；见 parseWorkspace 的取值范围。
   historyLimitKB: number;
@@ -58,10 +64,17 @@ export function createNote(id: string, now: string, title = "未命名笔记", b
 // 随手算：内存中的临时算稿，只存在于 App 状态里，绝不进入工作区与持久化层。
 // id 含「/」——文件名主干不允许出现斜杠（parseWorkspace 拒绝），不可能与真实笔记撞 id。
 // 正文是提示行加一个空行（结尾换行即空行）：打开时光标落在空行上，直接开写。
+// id 固定不变（持久化的 activeId 判定依赖它），标题与提示行按界面语言。
 export const SCRATCH_NOTE_ID = "scratch/随手算";
 export const SCRATCH_NOTE_BODY = "# 随手算笔记不会保存，app 退出即消失\n";
-export function createScratchNote(now: string): Note {
-  return createNote(SCRATCH_NOTE_ID, now, "随手算", SCRATCH_NOTE_BODY);
+const SCRATCH_NOTE_BODY_EN = "# Scratch notes are never saved — they're gone when the app quits\n";
+export function createScratchNote(now: string, lang: Lang = "zh"): Note {
+  return createNote(
+    SCRATCH_NOTE_ID,
+    now,
+    lang === "en" ? "scratch" : "随手算",
+    lang === "en" ? SCRATCH_NOTE_BODY_EN : SCRATCH_NOTE_BODY,
+  );
 }
 
 // 改名重定向（桌面版）：改名后旧 id 的排队保存/历史操作落到新文件。
@@ -103,6 +116,7 @@ export function createWorkspace(now: string, makeId: () => string): Workspace {
     // 由 App 依据该约定恢复视图（1.6.0 起）。
     activeId: null,
     theme: "light",
+    uiLanguage: "en",
     format: DEFAULT_FORMAT_SETTINGS,
     historyLimitKB: DEFAULT_HISTORY_LIMIT_KB,
   };
@@ -112,13 +126,16 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function parseWorkspace(input: unknown): Workspace {
-  if (!record(input) || input.version !== 1)
-    throw new Error("笔记格式或版本不受支持，原数据已保留。");
+export function parseWorkspace(input: unknown, lang: Lang = "zh"): Workspace {
+  if (!record(input) || input.version !== 1) throw new Error(msg(lang, "workspaceVersion"));
   if (!Array.isArray(input.notes) || input.notes.length > MAX_NOTES)
-    throw new Error("笔记列表无效或超过 100 篇。");
+    throw new Error(msg(lang, "notesInvalid"));
   const theme = LEGACY_THEMES[input.theme as string] ?? input.theme;
-  if (!THEME_IDS.includes(theme as Theme)) throw new Error("笔记主题配置无效。");
+  if (!THEME_IDS.includes(theme as Theme)) throw new Error(msg(lang, "themeInvalid"));
+  // 界面语言：缺省或非法回落英文（出厂默认），不让手工改动阻塞启动。
+  const uiLanguage: UiLanguage = UI_LANGS.includes(input.uiLanguage as UiLanguage)
+    ? (input.uiLanguage as UiLanguage)
+    : "en";
   // 旧数据没有 format：按默认格式设置；更早的 unitMode 迁移到「单位使用」。
   // calculatorMode 字段已废弃，读取时忽略。
   const format =
@@ -151,7 +168,7 @@ export function parseWorkspace(input: unknown): Workspace {
       !Number.isFinite(Date.parse(note.updatedAt)) ||
       typeof note.trashed !== "boolean"
     ) {
-      throw new Error("笔记内容损坏或超出长度限制，原数据已保留。");
+      throw new Error(msg(lang, "noteCorrupt"));
     }
     ids.add(note.id);
     return {
@@ -165,7 +182,7 @@ export function parseWorkspace(input: unknown): Workspace {
     };
   });
   if (input.activeId !== null && (typeof input.activeId !== "string" || !ids.has(input.activeId))) {
-    throw new Error("当前笔记引用无效，原数据已保留。");
+    throw new Error(msg(lang, "activeIdInvalid"));
   }
   // 历史空间：缺省或取值非法时回落默认（128KB），不让手工改动阻塞启动
   const historyLimitKB = isHistoryLimitKB(input.historyLimitKB)
@@ -176,6 +193,7 @@ export function parseWorkspace(input: unknown): Workspace {
     notes,
     activeId: input.activeId,
     theme: theme as Theme,
+    uiLanguage,
     format,
     historyLimitKB,
   };

@@ -53,6 +53,7 @@ import {
 } from "./domain/search.ts";
 import {
   CALCULATOR_INSERT_EVENT,
+  CALCULATOR_LANG_EVENT,
   CALCULATOR_READY_EVENT,
   CALCULATOR_THEME_EVENT,
   CALCULATOR_VISIBILITY_EVENT,
@@ -79,11 +80,10 @@ import { FindReplaceBar } from "./ui/FindReplaceBar.tsx";
 import { HelpDialog } from "./ui/HelpDialog.tsx";
 import { HistoryDialog, historyLabel } from "./ui/HistoryDialog.tsx";
 import { IconButton } from "./ui/IconButton.tsx";
+import { formatDate, makeT } from "./ui/i18n.ts";
+import { LanguageGlyph } from "./ui/LanguageGlyph.tsx";
 import { SettingsDialog } from "./ui/SettingsDialog.tsx";
 import { useWorkspace } from "./useWorkspace.ts";
-
-const date = (value: string) =>
-  new Intl.DateTimeFormat("zh-CN", { month: "short", day: "numeric" }).format(new Date(value));
 
 // 等宽字体列宽估算：CJK/全角按 1em（14px），其余按 0.6em；水平滚动只需保证匹配可见，允许近似
 const columnWidth = (text: string) => {
@@ -157,6 +157,9 @@ export default function App() {
   const findReplaceRef = useRef<HTMLInputElement>(null);
 
   const notes = workspace?.notes ?? [];
+  // 界面语言：英文为出厂默认；语言按钮切换并持久化。错误消息与结果单位语言一并跟随。
+  const lang = workspace?.uiLanguage ?? "en";
+  const t = useMemo(() => makeT(lang), [lang]);
   const trashCount = notes.filter((note) => note.trashed).length;
   const visibleNotes = notes.filter(
     (note) =>
@@ -179,8 +182,9 @@ export default function App() {
         unitSpacing: resultUnitSpacing,
         resultThousands,
         unitStyle: resultUnitStyle,
+        lang,
       }),
-    [selected?.body, resultThousands, resultUnitSpacing, resultUnitStyle],
+    [selected?.body, resultThousands, resultUnitSpacing, resultUnitStyle, lang],
   );
   const resultCount = results.filter((line) => line.kind === "result").length;
   const errorCount = results.filter((line) => line.kind === "error").length;
@@ -284,7 +288,7 @@ export default function App() {
       selected.body.length - (match.end - match.start) + findReplacement.length >
       MAX_NOTE_LENGTH
     ) {
-      notify("替换后将超过笔记长度上限，未执行。", true);
+      notify(t("replaceOverLimit"), true);
       return;
     }
     textarea.focus();
@@ -318,7 +322,7 @@ export default function App() {
     );
     if (count === 0) return;
     if (text.length > MAX_NOTE_LENGTH) {
-      notify("替换后将超过笔记长度上限，未执行。", true);
+      notify(t("replaceOverLimit"), true);
       return;
     }
     void recordNoteHistory(selected.id, selected.body);
@@ -331,7 +335,7 @@ export default function App() {
           // 两套同时存在时，第一次 Cmd+Z 走状态恢复、第二次又回放原生条目，
           // 按旧坐标删插会把原文复制一份（实测 bug）。
           formatUndoRef.current = null;
-          notify(`已替换 ${count} 处`);
+          notify(t("replacedCount", { n: count }));
           findReplaceRef.current?.focus();
           return;
         }
@@ -342,7 +346,7 @@ export default function App() {
     // 回退路径：React 状态替换无原生撤销条目，用 formatUndoRef 应用内撤销兜底
     formatUndoRef.current = { noteId: selected.id, previous: selected.body, formatted: text };
     patchNote({ body: text });
-    notify(`已替换 ${count} 处`);
+    notify(t("replacedCount", { n: count }));
   }
 
   useEffect(() => {
@@ -406,9 +410,9 @@ export default function App() {
   }, [notice, notify]);
 
   const newNote = useCallback(
-    async (title = "未命名笔记", body = ""): Promise<boolean> => {
+    async (title = t("untitledNote"), body = ""): Promise<boolean> => {
       if ((workspace?.notes.length ?? 0) >= MAX_NOTES) {
-        notify("目前最多保留 100 篇笔记（含废纸篓）。", true);
+        notify(t("notesLimit"), true);
         return false;
       }
       if (isDesktopApp) {
@@ -420,7 +424,7 @@ export default function App() {
             activeId: created.id,
           }));
         } catch {
-          notify("新建笔记失败，请重试。", true);
+          notify(t("newNoteFailed"), true);
           return false;
         }
       } else {
@@ -434,7 +438,7 @@ export default function App() {
       requestAnimationFrame(() => editorRef.current?.focus());
       return true;
     },
-    [workspace?.notes.length, resetActiveLine, update, notify],
+    [workspace?.notes.length, resetActiveLine, update, notify, t],
   );
 
   // 焦点到编辑器并把光标放在文末：随手算的正文以空行结尾，文末即提示行下的空行，直接开写。
@@ -450,12 +454,12 @@ export default function App() {
   // 随手算只经顶栏按钮打开：内存里已有内容就原样恢复，没有才新建提示行加空行。
   // 打开即把 activeId 置空并持久化——「上次视图 = 随手算」，重开 app 时据此恢复为新随手算。
   const openScratch = useCallback(() => {
-    setScratchNote((before) => before ?? createScratchNote(new Date().toISOString()));
+    setScratchNote((before) => before ?? createScratchNote(new Date().toISOString(), lang));
     setScratchOpen(true);
     update((before) => ({ ...before, activeId: null }));
     resetActiveLine();
     focusEditorAtEnd();
-  }, [resetActiveLine, update, focusEditorAtEnd]);
+  }, [resetActiveLine, update, focusEditorAtEnd, lang]);
 
   // 回到「我的笔记」：随手算打开时点「我的笔记」tab 也离开（1.6.4 起，含高亮熄灭）；
   // activeId 无效（随手算/废纸篓/悬空）时落回第一篇可用笔记，让「上次视图 = 我的笔记」有据可依。
@@ -484,11 +488,12 @@ export default function App() {
     bootedRef.current = true;
     const active = workspace.notes.find((note) => note.id === workspace.activeId);
     if (!active || active.trashed) {
-      setScratchNote((before) => before ?? createScratchNote(new Date().toISOString()));
+      setScratchNote((before) => before ?? createScratchNote(new Date().toISOString(), lang));
       setScratchOpen(true);
       focusEditorAtEnd();
     }
-  }, [workspace, focusEditorAtEnd]);
+    // bootedRef 保证只跑一次，lang 只影响新建随手算的提示行语言
+  }, [workspace, focusEditorAtEnd, lang]);
 
   function patchNote(patch: Pick<Note, "body">) {
     if (!selected) return;
@@ -541,7 +546,7 @@ export default function App() {
     }));
     setTrashView(false);
     resetActiveLine();
-    notify("笔记已恢复");
+    notify(t("noteRestored"));
   }
 
   // 编辑历史：文件名是秒级时间戳（`年-月-日-时-分-秒.txt`），同小时可有多份；
@@ -563,14 +568,17 @@ export default function App() {
       historyBaseline.current.set(noteId, body);
       return recordHistoryFile(
         noteId,
-        serializeNoteBody(body, { unitStyle: workspace?.format.unitStyle }),
+        serializeNoteBody(body, {
+          unitStyle: workspace?.format.unitStyle,
+          lang: workspace?.uiLanguage,
+        }),
         localTimestamp(),
         (workspace?.historyLimitKB ?? DEFAULT_HISTORY_LIMIT_KB) * 1024,
       ).catch(() => {
-        notify("历史记录失败，请稍后重试。", true);
+        notify(t("historyFailed"), true);
       });
     },
-    [workspace, notify],
+    [workspace, notify, t],
   );
   // 切换笔记：先给旧笔记留档，再给新笔记建立基线（无基线时以加载内容为基线）。
   useEffect(() => {
@@ -619,9 +627,9 @@ export default function App() {
         ),
       }));
       refreshHistory();
-      notify(`已恢复到 ${historyLabel(entry.name)}`);
+      notify(t("restoredTo", { label: historyLabel(entry.name, lang) }));
     },
-    [selected, recordNoteHistory, update, refreshHistory, notify],
+    [selected, recordNoteHistory, update, refreshHistory, notify, t, lang],
   );
   // 打开历史弹窗时加载当前笔记的历史列表（UI 组件不直接读存储层）。
   const [historyEntries, setHistoryEntries] = useState<HistoryEntry[] | null>(null);
@@ -651,17 +659,17 @@ export default function App() {
     async (text: string) => {
       try {
         await navigator.clipboard.writeText(text);
-        notify("结果已复制");
+        notify(t("resultCopied"));
       } catch {
-        notify("复制失败，请选中结果后手动复制。", true);
+        notify(t("copyFailed"), true);
       }
     },
-    [notify],
+    [notify, t],
   );
 
   function insertExpression(expression: string) {
     if (!selected || selected.trashed) {
-      newNote("随手计算", expression.trim());
+      newNote(t("quickCalcTitle"), expression.trim());
       return;
     }
     const textarea = editorRef.current;
@@ -672,7 +680,7 @@ export default function App() {
     const insertion = `${before && !before.endsWith("\n") ? "\n" : ""}${expression.trim()}\n`;
     const body = before + insertion + selected.body.slice(insertionPoint).replace(/^\n/, "");
     if (body.length > MAX_NOTE_LENGTH) {
-      notify("这篇笔记已达到长度上限，请新建一篇。", true);
+      notify(t("noteAtLimit"), true);
       return;
     }
     patchNote({ body });
@@ -683,7 +691,7 @@ export default function App() {
         insertionPoint + insertion.length,
       );
     });
-    notify("算式已写入笔记");
+    notify(t("expressionInserted"));
   }
 
   const handleActiveLine = useCallback((line: number) => {
@@ -720,7 +728,7 @@ export default function App() {
     if (!selected || !workspace) return;
     const formatted = formatNoteBody(selected.body, workspace.format, convertUnitQuantity);
     if (formatted === selected.body) {
-      notify("格式已是最新的。");
+      notify(t("formatFresh"));
       return;
     }
     const isScratch = selected.id === SCRATCH_NOTE_ID;
@@ -735,7 +743,7 @@ export default function App() {
           // execCommand 成功：原生撤销栈接管（一次 Cmd+Z 还原），
           // 不能再挂应用内撤销，否则连续 Cmd+Z 双轨回放会重复正文
           formatUndoRef.current = null;
-          notify("已按格式设置整理本页算式");
+          notify(t("formatted"));
           return;
         }
       } catch {
@@ -759,8 +767,8 @@ export default function App() {
         ),
       }));
     }
-    notify("已按格式设置整理本页算式");
-  }, [selected, workspace, update, recordNoteHistory, notify]);
+    notify(t("formatted"));
+  }, [selected, workspace, update, recordNoteHistory, notify, t]);
 
   // 右键菜单：定位（Finder）/导出/删除到废纸篓
   const closeNoteMenu = useCallback(() => setNoteMenu(null), []);
@@ -799,16 +807,19 @@ export default function App() {
       try {
         if (
           await downloadText(
-            `${title || "未命名笔记"}.txt`,
-            serializeNoteBody(note.body, { unitStyle: workspace?.format.unitStyle }),
+            `${title || t("untitledNote")}.txt`,
+            serializeNoteBody(note.body, {
+              unitStyle: workspace?.format.unitStyle,
+              lang: workspace?.uiLanguage,
+            }),
           )
         )
-          notify("已导出文本笔记（含结果）");
+          notify(t("exported"));
       } catch {
-        notify("导出失败，请重试。", true);
+        notify(t("exportFailed"), true);
       }
     },
-    [workspace, notify],
+    [workspace, notify, t],
   );
   const trashNote = useCallback(
     (noteId: string) => {
@@ -821,9 +832,9 @@ export default function App() {
         ),
         activeId: before.activeId === noteId ? null : before.activeId,
       }));
-      notify("已移到废纸篓");
+      notify(t("trashedToast"));
     },
-    [update, notify],
+    [update, notify, t],
   );
   // 永久删除：从工作区移除；Rust 保存时按新旧元数据差异物理删除对应 .txt 文件。
   const permanentDelete = useCallback(
@@ -834,9 +845,9 @@ export default function App() {
         notes: before.notes.filter((note) => !idSet.has(note.id)),
         activeId: before.activeId && idSet.has(before.activeId) ? null : before.activeId,
       }));
-      notify(noteIds.length === 1 ? "笔记已永久删除" : `已永久删除 ${noteIds.length} 篇笔记`);
+      notify(noteIds.length === 1 ? t("deletedOne") : t("deletedMany", { n: noteIds.length }));
     },
-    [update, notify],
+    [update, notify, t],
   );
 
   // 计算器子窗口状态：初始查询一次，之后由 Rust 在显示/隐藏时推送。
@@ -861,6 +872,9 @@ export default function App() {
 
   const themeRef = useRef(workspace?.theme ?? "light");
   themeRef.current = workspace?.theme ?? "light";
+  // 主题推送（子窗就绪时补推防竞态）；界面语言同机制增量同步。
+  const langRef = useRef(lang);
+  langRef.current = lang;
   useEffect(() => {
     if (!isDesktopApp) return;
     void calculatorStatus()
@@ -868,12 +882,13 @@ export default function App() {
       .catch(() => {});
     const pushTheme = () => {
       void emit(CALCULATOR_THEME_EVENT, themeRef.current).catch(() => {});
+      void emit(CALCULATOR_LANG_EVENT, langRef.current).catch(() => {});
     };
     const unlisten = listen<boolean>(CALCULATOR_VISIBILITY_EVENT, (event) => {
       setCalculatorVisible(event.payload === true);
       if (event.payload === true) pushTheme();
     });
-    // 子窗挂载完成时立即补一次主题，避免创建早期的推送丢失（竞态）。
+    // 子窗挂载完成时立即补一次主题与语言，避免创建早期的推送丢失（竞态）。
     const unlistenReady = listen(CALCULATOR_READY_EVENT, pushTheme);
     return () => {
       void unlisten.then((dispose) => dispose());
@@ -881,11 +896,15 @@ export default function App() {
     };
   }, []);
 
-  // 切换主题时同步给计算器子窗口。
+  // 切换主题/语言时同步给计算器子窗口。
   useEffect(() => {
     if (!isDesktopApp) return;
     void emit(CALCULATOR_THEME_EVENT, workspace?.theme ?? "light").catch(() => {});
   }, [workspace?.theme]);
+  useEffect(() => {
+    if (!isDesktopApp) return;
+    void emit(CALCULATOR_LANG_EVENT, lang).catch(() => {});
+  }, [lang]);
 
   // 计算器「写入当前笔记」：经事件送达主窗，按格式化设置整理这一行后插入当前行之后
   //（1.6.16 起；帮助弹窗的示例插入不经过这里，保持原样）。
@@ -935,7 +954,7 @@ export default function App() {
             ),
           }));
         }
-        notify("已撤销格式化");
+        notify(t("formatUndo"));
         return;
       }
       if (event.key === ",") {
@@ -983,6 +1002,7 @@ export default function App() {
     selected?.id,
     openFind,
     notify,
+    t,
   ]);
 
   if (!workspace)
@@ -990,10 +1010,10 @@ export default function App() {
       <main className="startup-screen">
         <img src="/favicon.svg" alt="" width="48" height="48" />
         <h1>calcbook</h1>
-        <p role="status">{error || "正在打开你的笔记…"}</p>
+        <p role="status">{error || t("openingNotes")}</p>
         {error && (
           <button className="primary-button" type="button" onClick={() => void load()}>
-            重试读取
+            {t("retry")}
           </button>
         )}
       </main>
@@ -1001,7 +1021,7 @@ export default function App() {
 
   return (
     <div className={`app-shell ${sidebarOpen ? "has-sidebar" : ""}`}>
-      <aside className="sidebar" aria-label="笔记导航">
+      <aside className="sidebar" aria-label={t("notesNav")}>
         <div className="sidebar-inner">
           <div className="brand" data-tauri-drag-region>
             <span className="brand-logo-wrap">
@@ -1024,8 +1044,8 @@ export default function App() {
             <Search size={15} />
             <input
               ref={searchRef}
-              aria-label="搜索笔记"
-              placeholder="搜索笔记…"
+              aria-label={t("searchNotes")}
+              placeholder={`${t("searchNotes")}…`}
               value={query}
               onChange={(event) => setQuery(event.target.value)}
             />
@@ -1042,7 +1062,7 @@ export default function App() {
                   if (trashView || scratchOpen) returnToNotes();
                 }}
               >
-                我的笔记
+                {t("myNotes")}
               </button>
               <button
                 type="button"
@@ -1063,23 +1083,23 @@ export default function App() {
                   }
                 }}
               >
-                废纸篓
+                {t("trash")}
               </button>
             </div>
             {trashView ? (
               <div className="heading-actions">
-                <span className="trash-count" title="废纸篓中的笔记数">
+                <span className="trash-count" title={t("trashCountTitle")}>
                   {trashCount}
                 </span>
                 <IconButton
-                  title="永久删除废纸篓里的全部笔记"
+                  title={t("emptyTrashTitle")}
                   onClick={() => setConfirmDelete({ mode: "all", count: trashCount })}
                 >
                   <Trash2 size={17} />
                 </IconButton>
               </div>
             ) : (
-              <IconButton title="新建笔记" onClick={() => void newNote()}>
+              <IconButton title={t("newNote")} onClick={() => void newNote()}>
                 <Plus size={17} />
               </IconButton>
             )}
@@ -1110,20 +1130,20 @@ export default function App() {
               >
                 <span className="note-card-top">
                   <FileText size={15} />
-                  <strong>{note.title || "未命名笔记"}</strong>
+                  <strong>{note.title || t("untitledNote")}</strong>
                 </span>
                 <span className="note-preview">
                   {note.body
                     .split("\n")
                     .find((line) => line.trim())
-                    ?.replace(/^#+\s*/, "") || "一张白纸，等一个想法"}
+                    ?.replace(/^#+\s*/, "") || t("blankPreview")}
                 </span>
-                <span className="note-date">{date(note.updatedAt)}</span>
+                <span className="note-date">{formatDate(note.updatedAt, lang)}</span>
               </button>
             ))}
             {visibleNotes.length === 0 && (
               <p className="no-notes">
-                {query ? "没有找到这篇笔记" : trashView ? "废纸篓是空的" : "从一张白纸开始吧"}
+                {query ? t("noMatchNote") : trashView ? t("trashEmpty") : t("startBlank")}
               </p>
             )}
           </div>
@@ -1131,15 +1151,28 @@ export default function App() {
             <div className="settings-entry">
               <button
                 type="button"
-                title="设置（⌘ / Ctrl ,）"
+                title={t("settingsWithKey")}
                 onClick={() => setSettingsOpen(true)}
               >
                 <Settings size={16} />
-                <span>设置</span>
+                <span>{t("settings")}</span>
               </button>
               <IconButton
+                className="lang-toggle"
+                title={lang === "en" ? t("useChinese") : t("useEnglish")}
+                onClick={() =>
+                  update((before) => ({
+                    ...before,
+                    uiLanguage: before.uiLanguage === "en" ? "zh" : "en",
+                  }))
+                }
+              >
+                {/* 字形显示切换目标：英文界面点「中」进中文，中文界面点「En」回英文 */}
+                <LanguageGlyph lang={lang === "en" ? "zh" : "en"} />
+              </IconButton>
+              <IconButton
                 className="theme-toggle"
-                title={workspace.theme === "dark" ? "切换到浅色模式" : "切换到深色模式"}
+                title={workspace.theme === "dark" ? t("toLightMode") : t("toDarkMode")}
                 onClick={() =>
                   update((before) => ({
                     ...before,
@@ -1157,7 +1190,7 @@ export default function App() {
         <header className="topbar" data-tauri-drag-region>
           <div className="breadcrumb">
             <IconButton
-              title={sidebarOpen ? "收起笔记列表" : "展开笔记列表"}
+              title={sidebarOpen ? t("collapseList") : t("expandList")}
               aria-expanded={sidebarOpen}
               onClick={() => setSidebarOpen(!sidebarOpen)}
             >
@@ -1165,48 +1198,48 @@ export default function App() {
             </IconButton>
             <BookOpen size={15} />
             {scratchOpen ? (
-              <strong>随手算</strong>
+              <strong>{t("scratch")}</strong>
             ) : (
               <>
-                <span>{trashView ? "废纸篓" : "我的笔记"}</span>
+                <span>{trashView ? t("trash") : t("myNotes")}</span>
                 <ChevronRight size={13} />
-                <strong>{selected?.title || (trashView ? "空" : "新的一页")}</strong>
+                <strong>{selected?.title || (trashView ? t("trash") : "")}</strong>
               </>
             )}
           </div>
           <div className="topbar-actions">
             {status === "error" && (
               <span className="save-status save-error" role="alert">
-                尚未保存
+                {t("notSaved")}
               </span>
             )}
             <button
               type="button"
               className={`topbar-tool ${scratchOpen ? "is-open" : ""}`}
               aria-pressed={scratchOpen}
-              title="随手算：内存里的临时算稿，不保存为文件，app 退出即消失；再点从普通笔记切回时恢复内容"
+              title={t("scratchTitle")}
               onClick={openScratch}
             >
               <SquarePen size={16} />
-              <span>随手算</span>
+              <span>{t("scratch")}</span>
             </button>
             <button
               type="button"
               className={`calculator-toggle ${calculatorVisible ? "is-open" : ""}`}
               aria-pressed={calculatorVisible}
-              title={calculatorVisible ? "计算器窗口已打开" : "打开计算器窗口"}
+              title={calculatorVisible ? t("calculatorOpen") : t("calculatorOpenTitle")}
               onClick={() => {
                 if (!isDesktopApp) {
-                  notify("计算器窗口仅在桌面版可用。", true);
+                  notify(t("calculatorDesktopOnly"), true);
                   return;
                 }
                 void toggleCalculator()
                   .then((status) => setCalculatorVisible(status.visible))
-                  .catch(() => notify("无法打开计算器窗口，请重试。", true));
+                  .catch(() => notify(t("calculatorOpenFailed"), true));
               }}
             >
               <CalculatorIcon size={16} />
-              <span>计算器</span>
+              <span>{t("calculator")}</span>
             </button>
           </div>
         </header>
@@ -1214,7 +1247,7 @@ export default function App() {
           <div className="error-banner" role="alert">
             <span>{error}</span>
             <button type="button" onClick={() => void flush().catch(() => {})}>
-              重试保存
+              {t("retrySave")}
             </button>
           </div>
         )}
@@ -1225,32 +1258,34 @@ export default function App() {
                 <div className="note-meta">
                   <span className="note-type">
                     <FileText size={12} />
-                    {scratchOpen ? "临时笔记" : `${date(selected.updatedAt)}更新`}
+                    {scratchOpen
+                      ? t("tempNote")
+                      : t("updatedAtDate", { date: formatDate(selected.updatedAt, lang) })}
                   </span>
                   <span className="note-saved-dot" />
-                  <span>边想，边记，边算</span>
+                  <span>{t("slogan")}</span>
                 </div>
                 {/* 顺序约定：查找替换、格式化、历史、删除（废纸篓视图为恢复/永久删除）、语法速查 */}
                 <div className="note-tools">
                   <IconButton
-                    title={findOpen ? "关闭查找替换（Esc）" : "查找替换（Cmd+F）"}
+                    title={findOpen ? t("closeFind") : t("findReplace")}
                     onClick={toggleFind}
                   >
                     <Search size={16} />
                   </IconButton>
-                  <IconButton title="按格式设置整理本页算式" onClick={applyFormatting}>
+                  <IconButton title={t("formatPage")} onClick={applyFormatting}>
                     <Sparkles size={16} />
                   </IconButton>
-                  <IconButton title="历史记录" onClick={() => setHistoryOpen(true)}>
+                  <IconButton title={t("historyRecords")} onClick={() => setHistoryOpen(true)}>
                     <CalendarClock size={16} />
                   </IconButton>
                   {selected.trashed ? (
                     <>
-                      <IconButton title="恢复笔记" onClick={restoreNote}>
+                      <IconButton title={t("restoreNote")} onClick={restoreNote}>
                         <Undo2 size={16} />
                       </IconButton>
                       <IconButton
-                        title="永久删除这篇笔记"
+                        title={t("deleteForever")}
                         onClick={() =>
                           setConfirmDelete({
                             mode: "one",
@@ -1264,7 +1299,7 @@ export default function App() {
                     </>
                   ) : (
                     <IconButton
-                      title={scratchOpen ? "随手算不会保存为文件，不能移到废纸篓" : "移到废纸篓"}
+                      title={scratchOpen ? t("scratchNoTrash") : t("moveToTrash")}
                       disabled={scratchOpen}
                       onClick={() =>
                         setConfirmDelete({
@@ -1277,21 +1312,17 @@ export default function App() {
                       <Trash2 size={16} />
                     </IconButton>
                   )}
-                  <IconButton title="语法速查" onClick={() => setHelpOpen(true)}>
+                  <IconButton title={t("syntaxHelp")} onClick={() => setHelpOpen(true)}>
                     <CircleHelp size={16} />
                   </IconButton>
                 </div>
               </div>
               <input
                 className="note-title"
-                aria-label="笔记标题"
-                title={
-                  scratchOpen
-                    ? "随手算没有文件名，也不会保存"
-                    : "标题即文件名；回车或移开焦点后生效"
-                }
-                value={scratchOpen ? "随手算" : (draft ?? selected.title)}
-                placeholder="未命名笔记"
+                aria-label={t("noteTitle")}
+                title={scratchOpen ? t("scratchNoFilename") : t("titleIsFilename")}
+                value={scratchOpen ? t("scratch") : (draft ?? selected.title)}
+                placeholder={t("untitledNote")}
                 maxLength={MAX_TITLE_LENGTH}
                 readOnly={scratchOpen || selected.trashed}
                 onChange={(event) => setTitleDraft({ id: selected.id, value: event.target.value })}
@@ -1308,15 +1339,16 @@ export default function App() {
             </div>
             {selected.trashed && (
               <div className="trash-banner">
-                <span>这篇笔记在废纸篓中，内容已保留。</span>
+                <span>{t("inTrashBanner")}</span>
                 <button type="button" onClick={restoreNote}>
-                  恢复笔记
+                  {t("restoreNote")}
                 </button>
               </div>
             )}
             <div className="find-host">
               {findOpen && (
                 <FindReplaceBar
+                  lang={lang}
                   query={findQuery}
                   onQuery={setFindQuery}
                   options={findOptions}
@@ -1344,6 +1376,7 @@ export default function App() {
                 key={selected.id}
                 body={selected.body}
                 results={results}
+                lang={lang}
                 onChange={(body) => patchNote({ body })}
                 onCopy={(text) => void copy(text)}
                 onDestructiveChange={() => {
@@ -1361,17 +1394,17 @@ export default function App() {
             <footer className="statusbar">
               <span>
                 <span className="status-dot" />
-                {resultCount} 条计算
+                {t("resultCount", { n: resultCount })}
                 {errorCount > 0 && (
                   <>
                     <span className="statusbar-sep">|</span>
                     <button
                       type="button"
                       className="error-count"
-                      title="点击依次定位到每个错误行（光标停行尾，循环）"
+                      title={t("errorNavTitle")}
                       onClick={gotoNextError}
                     >
-                      {errorCount} 处待检查
+                      {t("errorCount", { n: errorCount })}
                     </button>
                   </>
                 )}
@@ -1379,40 +1412,42 @@ export default function App() {
                   <>
                     <span className="statusbar-sep">|</span>
                     <span className="error-detail">
-                      第 {activeErrorOrdinal} 处：{activeError.error}
+                      {t("errorOrdinal", { n: activeErrorOrdinal, error: activeError.error ?? "" })}
                     </span>
                   </>
                 )}
               </span>
               <span>
-                第 {Math.min(activeLine + 1, results.length)} 行
+                {t("lineNo", { n: Math.min(activeLine + 1, results.length) })}
                 <span className="statusbar-divider" />
-                点击右侧结果即可复制
+                {t("copyHint")}
               </span>
             </footer>
           </>
         ) : (
           <div className="empty-page">
             <BookOpen size={38} strokeWidth={1.2} />
-            <h1>{trashView ? "没有被丢下的想法" : "给思路一张白纸。"}</h1>
-            <p>{trashView ? "移入废纸篓的笔记会保留在这里。" : "从一个数字，或一个想法开始。"}</p>
+            <h1>{trashView ? t("trashKeepIdeas") : t("blankPageTitle")}</h1>
+            <p>{trashView ? t("trashKeepsNotes") : t("startFromIdea")}</p>
             {/* 废纸篓不接受新建：只能由笔记删除过来，空态只说明不留入口 */}
             {!trashView && (
               <button type="button" className="primary-button" onClick={() => void newNote()}>
                 <Plus size={16} />
-                新建笔记
+                {t("newNote")}
               </button>
             )}
           </div>
         )}
       </main>
-      {helpOpen && <HelpDialog onClose={() => setHelpOpen(false)} onInsert={insertExpression} />}
+      {helpOpen && (
+        <HelpDialog lang={lang} onClose={() => setHelpOpen(false)} onInsert={insertExpression} />
+      )}
       {noteMenu && (
         <div
           ref={noteMenuRef}
           className="context-menu"
           role="menu"
-          aria-label="笔记操作"
+          aria-label={t("noteActions")}
           style={{
             // 靠近视口右/下边缘时向内收，避免菜单溢出屏幕
             left: Math.min(noteMenu.x, window.innerWidth - 168),
@@ -1429,7 +1464,7 @@ export default function App() {
             }}
           >
             <FolderOpen size={14} />
-            定位
+            {t("reveal")}
           </button>
           <button
             type="button"
@@ -1440,7 +1475,7 @@ export default function App() {
             }}
           >
             <ArrowDownToLine size={14} />
-            导出
+            {t("export")}
           </button>
           <button
             type="button"
@@ -1452,33 +1487,33 @@ export default function App() {
             }}
           >
             <Trash2 size={14} />
-            删除
+            {t("delete")}
           </button>
         </div>
       )}
       {confirmDelete && (
         <Dialog
           className="confirm-dialog"
-          label={confirmDelete.mode === "trash" ? "移到废纸篓确认" : "永久删除确认"}
+          label={confirmDelete.mode === "trash" ? t("trashConfirmLabel") : t("deleteConfirmLabel")}
           onClose={() => setConfirmDelete(null)}
         >
           <div className="settings-heading">
             <div>
-              <h2>{confirmDelete.mode === "trash" ? "移到废纸篓" : "永久删除"}</h2>
+              <h2>
+                {confirmDelete.mode === "trash" ? t("moveToTrashTitle") : t("deleteForeverTitle")}
+              </h2>
               <p>
                 {confirmDelete.mode === "all"
-                  ? `将永久删除废纸篓里的 ${confirmDelete.count} 篇笔记及其文件，无法恢复。`
+                  ? t("deleteAllConfirm", { n: confirmDelete.count })
                   : confirmDelete.mode === "trash"
-                    ? `将把「${confirmDelete.title || "未命名笔记"}」移到废纸篓，可随时恢复。`
-                    : `将永久删除「${confirmDelete.title || "未命名笔记"}」及其文件，无法恢复。`}
+                    ? t("trashOneConfirm", { title: confirmDelete.title || t("untitledNote") })
+                    : t("deleteOneConfirm", { title: confirmDelete.title || t("untitledNote") })}
               </p>
             </div>
           </div>
           <div className="settings-footer">
             <span role="note">
-              {confirmDelete.mode === "trash"
-                ? "废纸篓里的笔记不会参与计算，也不会自动留历史。"
-                : "对应的 .txt 文件也会一并删除。"}
+              {confirmDelete.mode === "trash" ? t("trashFooterNote") : t("deleteFooterNote")}
             </span>
             <button
               type="button"
@@ -1494,7 +1529,7 @@ export default function App() {
                     activeId:
                       before.notes.find((note) => !note.trashed && note.id !== id)?.id ?? null,
                   }));
-                  notify("已移到废纸篓，可随时恢复");
+                  notify(t("trashedCanRestore"));
                 } else {
                   permanentDelete(
                     confirmDelete.mode === "all"
@@ -1505,13 +1540,14 @@ export default function App() {
                 setConfirmDelete(null);
               }}
             >
-              {confirmDelete.mode === "trash" ? "移到废纸篓" : "永久删除"}
+              {confirmDelete.mode === "trash" ? t("moveToTrashTitle") : t("deleteForeverTitle")}
             </button>
           </div>
         </Dialog>
       )}
       {settingsOpen && workspace && storage && (
         <SettingsDialog
+          lang={lang}
           directory={storage.directory}
           defaultDirectory={storage.defaultDirectory}
           canChooseDirectory={storage.canChoose}
@@ -1531,18 +1567,19 @@ export default function App() {
       )}
       {historyOpen && selected && (
         <HistoryDialog
+          lang={lang}
           entries={historyEntries}
           onClose={() => setHistoryOpen(false)}
           onRestore={restoreHistory}
           onDelete={(entry) =>
             deleteHistoryFile(selected.id, entry.name)
               .then(() => {
-                notify(`已删除 ${historyLabel(entry.name)} 的历史`);
+                notify(t("historyDeleted", { label: historyLabel(entry.name, lang) }));
                 void listHistory(selected.id, localHourPrefix())
                   .then((list) => setHistoryEntries(list))
                   .catch(() => setHistoryEntries([]));
               })
-              .catch(() => notify("删除历史失败，请稍后重试。", true))
+              .catch(() => notify(t("historyDeleteFailed"), true))
           }
         />
       )}
@@ -1550,7 +1587,7 @@ export default function App() {
         <div className={`toast ${noticeAlert ? "is-alert" : ""}`} role="status">
           {noticeAlert ? <CircleAlert size={15} /> : <Check size={15} />}
           <span>{notice}</span>
-          <IconButton title="关闭提示" onClick={() => notify("")}>
+          <IconButton title={t("closeNotice")} onClick={() => notify("")}>
             <X size={14} />
           </IconButton>
         </div>

@@ -64,6 +64,7 @@ fn save_workspace_settings(
     lock: tauri::State<StoreLock>,
     theme: String,
     #[allow(non_snake_case)] activeId: Option<String>,
+    #[allow(non_snake_case)] uiLanguage: String,
     format: storage::FormatSettings,
     #[allow(non_snake_case)] historyLimitKb: u32,
 ) -> Result<(), String> {
@@ -72,6 +73,7 @@ fn save_workspace_settings(
         &store(&app)?.directory()?,
         &theme,
         activeId.as_deref(),
+        &uiLanguage,
         &format,
         historyLimitKb,
     )

@@ -23,6 +23,8 @@ export const CALCULATOR_INSERT_EVENT = "calculator://insert";
 export const CALCULATOR_VISIBILITY_EVENT = "calculator://visible";
 export const CALCULATOR_THEME_EVENT = "calculator://theme";
 export const CALCULATOR_READY_EVENT = "calculator://ready";
+// 界面语言同步：主窗在子窗就绪与切换语言时推送（主题同款机制）。
+export const CALCULATOR_LANG_EVENT = "calculator://lang";
 // 失焦 5 分钟未被再次激活自动收起。
 export const CALCULATOR_HIDE_AFTER_MS = 5 * 60 * 1000;
 export const NARROW_SIZE = { width: 300, height: 500 };
@@ -74,6 +76,16 @@ export async function getStorageInfo(): Promise<StorageInfo> {
   return isTauri()
     ? invoke("storage_info")
     : { directory: "此浏览器的本地存储", defaultDirectory: "~/.calcbook", canChoose: false };
+}
+
+// 计算器子窗口启动时读取界面语言（浏览器预览走 localStorage；桌面版经 CALCULATOR_LANG_EVENT 同步）。
+export function readStoredLanguage(): "zh" | "en" {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw && JSON.parse(raw)?.uiLanguage === "zh" ? "zh" : "en";
+  } catch {
+    return "en";
+  }
 }
 
 export async function chooseStorageDirectory(): Promise<StorageInfo | null> {
@@ -145,10 +157,14 @@ export async function saveWorkspace(workspace: Workspace): Promise<void> {
       activeId: validated.activeId,
       format: validated.format,
       historyLimitKb: validated.historyLimitKB,
+      uiLanguage: validated.uiLanguage,
     });
     for (const note of validated.notes) {
       const previous = noteSnapshot.get(note.id);
-      const serialized = serializeNoteBody(note.body, { unitStyle: validated.format.unitStyle });
+      const serialized = serializeNoteBody(note.body, {
+        unitStyle: validated.format.unitStyle,
+        lang: validated.uiLanguage,
+      });
       const noteId = resolveNoteId(note.id);
       if (!previous) {
         await invoke("write_note", { noteId, body: serialized });

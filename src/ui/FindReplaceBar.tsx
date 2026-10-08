@@ -10,10 +10,13 @@ import {
   X,
 } from "lucide-react";
 import type { KeyboardEvent as ReactKeyboardEvent, RefObject } from "react";
+import type { Lang } from "../domain/messages.ts";
 import type { SearchOptions } from "../domain/search.ts";
 import { IconButton } from "./IconButton.tsx";
+import { makeT } from "./i18n.ts";
 
 type Props = {
+  lang: Lang;
   query: string;
   onQuery: (value: string) => void;
   options: SearchOptions;
@@ -39,20 +42,21 @@ type Props = {
 
 const OPTION_TOGGLES: {
   key: keyof SearchOptions;
-  title: string;
+  titleKey: "caseSensitive" | "wholeWord" | "useRegex";
   Icon?: typeof CaseSensitive;
   // lucide 的 Regex 图标圆点悬在半空、更像中文句号，正则开关改用 ASCII 文本字形 ".*"
   glyph?: string;
 }[] = [
-  { key: "caseSensitive", title: "区分大小写", Icon: CaseSensitive },
-  { key: "wholeWord", title: "全词匹配（中文无词边界，对纯中文词不生效）", Icon: WholeWord },
-  { key: "regex", title: "使用正则表达式", glyph: ".*" },
+  { key: "caseSensitive", titleKey: "caseSensitive", Icon: CaseSensitive },
+  { key: "wholeWord", titleKey: "wholeWord", Icon: WholeWord },
+  { key: "regex", titleKey: "useRegex", glyph: ".*" },
 ];
 
 // 输入法组合中的 Enter/Escape 属于组词，不触发导航或关闭
 const isComposing = (event: ReactKeyboardEvent) => event.nativeEvent.isComposing;
 
 export function FindReplaceBar({
+  lang,
   query,
   onQuery,
   options,
@@ -73,6 +77,7 @@ export function FindReplaceBar({
   queryRef,
   replaceRef,
 }: Props) {
+  const t = makeT(lang);
   function handleQueryKeyDown(event: ReactKeyboardEvent<HTMLInputElement>) {
     if (isComposing(event)) return;
     if (event.key === "Enter") {
@@ -102,18 +107,23 @@ export function FindReplaceBar({
   }
   const hasMatches = matchCount > 0;
   const countLabel = error
-    ? "正则错误"
+    ? t("regexError")
     : !query
       ? ""
       : hasMatches
         ? `${activeIndex + 1}/${matchCount}`
-        : "无结果";
+        : t("noResults");
   return (
-    <div className="find-bar" role="dialog" aria-label="查找替换" onKeyDown={handleBarKeyDown}>
+    <div
+      className="find-bar"
+      role="dialog"
+      aria-label={t("findReplaceLabel")}
+      onKeyDown={handleBarKeyDown}
+    >
       <div className="find-row">
         {canReplace ? (
           <IconButton
-            title={replaceOpen ? "收起替换" : "展开替换"}
+            title={replaceOpen ? t("collapseReplace") : t("expandReplace")}
             aria-expanded={replaceOpen}
             onClick={onToggleReplace}
           >
@@ -126,9 +136,9 @@ export function FindReplaceBar({
           <input
             ref={queryRef}
             className="find-input"
-            aria-label="查找内容"
+            aria-label={t("findLabel")}
             aria-invalid={error !== null}
-            placeholder="查找"
+            placeholder={t("findPlaceholder")}
             value={query}
             spellCheck={false}
             autoCapitalize="off"
@@ -136,13 +146,13 @@ export function FindReplaceBar({
             onChange={(event) => onQuery(event.target.value)}
             onKeyDown={handleQueryKeyDown}
           />
-          {OPTION_TOGGLES.map(({ key, title, Icon, glyph }) => (
+          {OPTION_TOGGLES.map(({ key, titleKey, Icon, glyph }) => (
             <button
               key={key}
               type="button"
               className={`find-toggle ${options[key] ? "is-active" : ""}`}
-              title={title}
-              aria-label={title}
+              title={t(titleKey)}
+              aria-label={t(titleKey)}
               aria-pressed={options[key]}
               onClick={() => onToggleOption(key)}
             >
@@ -163,13 +173,13 @@ export function FindReplaceBar({
         >
           {countLabel}
         </span>
-        <IconButton title="上一个匹配（Shift+Enter）" disabled={!hasMatches} onClick={onPrevious}>
+        <IconButton title={t("prevMatch")} disabled={!hasMatches} onClick={onPrevious}>
           <ArrowUp size={14} />
         </IconButton>
-        <IconButton title="下一个匹配（Enter）" disabled={!hasMatches} onClick={onNext}>
+        <IconButton title={t("nextMatch")} disabled={!hasMatches} onClick={onNext}>
           <ArrowDown size={14} />
         </IconButton>
-        <IconButton title="关闭（Esc）" onClick={onClose}>
+        <IconButton title={t("closeEsc")} onClick={onClose}>
           <X size={14} />
         </IconButton>
       </div>
@@ -180,8 +190,8 @@ export function FindReplaceBar({
             <input
               ref={replaceRef}
               className="find-input"
-              aria-label="替换为"
-              placeholder={options.regex ? "替换为（支持 $&、$1–$9）" : "替换为"}
+              aria-label={t("replaceLabel")}
+              placeholder={options.regex ? t("replacePlaceholderRegex") : t("replaceLabel")}
               value={replacement}
               spellCheck={false}
               autoCapitalize="off"
@@ -191,13 +201,13 @@ export function FindReplaceBar({
             />
           </div>
           <IconButton
-            title="替换当前匹配（Enter）"
+            title={t("replaceCurrent")}
             disabled={!hasMatches || activeIndex < 0}
             onClick={onReplace}
           >
             <Replace size={14} />
           </IconButton>
-          <IconButton title="全部替换" disabled={!hasMatches} onClick={onReplaceAll}>
+          <IconButton title={t("replaceAll")} disabled={!hasMatches} onClick={onReplaceAll}>
             <ReplaceAll size={14} />
           </IconButton>
         </div>

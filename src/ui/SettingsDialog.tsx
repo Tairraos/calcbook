@@ -1,33 +1,46 @@
 import { ExternalLink, FolderOpen, X } from "lucide-react";
 import { useState } from "react";
 import { type FormatSettings, UNIT_STYLES, UNIT_SYSTEMS } from "../domain/formatting.ts";
+import type { Lang } from "../domain/messages.ts";
 import { DEFAULT_HISTORY_LIMIT_KB, MAX_HISTORY_LIMIT_KB } from "../domain/notebook.ts";
 import { Dialog } from "./Dialog.tsx";
 import { IconButton } from "./IconButton.tsx";
+import { formatBuildTime, makeT } from "./i18n.ts";
 
-const STYLE_OPTIONS: { value: FormatSettings["unitStyle"]; label: string }[] = [
-  { value: "free", label: "自由" },
-  { value: "chinese", label: "中文" },
-  { value: "upper", label: "英文大写" },
-  { value: "lower", label: "英文小写" },
-];
-const SYSTEM_OPTIONS: { value: FormatSettings["unitSystem"]; label: string }[] = [
-  { value: "free", label: "自由" },
-  { value: "metric", label: "公制" },
-  { value: "imperial", label: "英制" },
-  { value: "market", label: "市制" },
-];
+// 选项标签按界面语言显示；存进工作区的仍是 value 本身。
+const STYLE_LABELS = {
+  free: { zh: "自由", en: "Free" },
+  chinese: { zh: "中文", en: "中文" },
+  upper: { zh: "英文大写", en: "EN upper" },
+  lower: { zh: "英文小写", en: "EN lower" },
+} as const;
+const SYSTEM_LABELS = {
+  free: { zh: "自由", en: "Free" },
+  metric: { zh: "公制", en: "Metric" },
+  imperial: { zh: "英制", en: "Imperial" },
+  market: { zh: "市制", en: "Market" },
+} as const;
 
-const TOGGLES: { key: keyof FormatSettings; label: string; hint: string }[] = [
-  { key: "thousands", label: "笔记千分位逗号", hint: "正文 1,234,567" },
-  { key: "resultThousands", label: "结果千分位逗号", hint: "结果列 1,234,567" },
-  { key: "unitSpace", label: "数字与单位空格", hint: "100L → 100 L" },
-  { key: "percentSpace", label: "百分号前空格", hint: "10% → 10 %" },
-  { key: "operatorSpace", label: "运算符两边空格", hint: "+ - × ÷ / =" },
-  { key: "commentSpace", label: "注释符号后空格", hint: "#标题 → # 标题" },
+const TOGGLES: {
+  key:
+    | "thousands"
+    | "resultThousands"
+    | "unitSpace"
+    | "percentSpace"
+    | "operatorSpace"
+    | "commentSpace";
+  labelKey: Parameters<ReturnType<typeof makeT>>[0];
+}[] = [
+  { key: "thousands", labelKey: "toggleNoteThousands" },
+  { key: "resultThousands", labelKey: "toggleResultThousands" },
+  { key: "unitSpace", labelKey: "toggleUnitSpace" },
+  { key: "percentSpace", labelKey: "togglePercentSpace" },
+  { key: "operatorSpace", labelKey: "toggleOperatorSpace" },
+  { key: "commentSpace", labelKey: "toggleCommentSpace" },
 ];
 
 export function SettingsDialog({
+  lang,
   directory,
   defaultDirectory,
   canChooseDirectory,
@@ -44,6 +57,7 @@ export function SettingsDialog({
   onOpenProject,
   onClose,
 }: {
+  lang: Lang;
   directory: string;
   defaultDirectory: string;
   canChooseDirectory: boolean;
@@ -60,6 +74,7 @@ export function SettingsDialog({
   onOpenProject: () => Promise<void>;
   onClose: () => void;
 }) {
+  const t = makeT(lang);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [failed, setFailed] = useState(false);
@@ -79,7 +94,7 @@ export function SettingsDialog({
     setMessage("");
     setFailed(false);
     try {
-      if (await onChangeDirectory()) setMessage("存储位置已更新，现有笔记已复制过去。");
+      if (await onChangeDirectory()) setMessage(t("storageMoved"));
     } catch (reason) {
       setFailed(true);
       setMessage(reason instanceof Error ? reason.message : String(reason));
@@ -90,17 +105,17 @@ export function SettingsDialog({
   return (
     <Dialog
       className="settings-dialog"
-      label="设置"
+      label={t("settingsLabel")}
       onClose={() => {
         if (!busy) onClose();
       }}
     >
       <div className="settings-heading">
         <div>
-          <h2>设置</h2>
-          <p>给你的思路，选一个舒服的空间。</p>
+          <h2>{t("settingsLabel")}</h2>
+          <p>{t("settingsTagline")}</p>
         </div>
-        <IconButton title="关闭设置" onClick={onClose} disabled={busy}>
+        <IconButton title={t("closeSettings")} onClick={onClose} disabled={busy}>
           <X size={19} />
         </IconButton>
       </div>
@@ -108,7 +123,7 @@ export function SettingsDialog({
       <div className="settings-body">
         <section className="settings-section" aria-labelledby="storage-title">
           <div className="settings-row">
-            <h3 id="storage-title">文件存放位置</h3>
+            <h3 id="storage-title">{t("storageTitle")}</h3>
             <button
               className="secondary-button"
               type="button"
@@ -116,16 +131,14 @@ export function SettingsDialog({
               onClick={() => void changeDirectory()}
             >
               <FolderOpen size={14} />
-              {busy ? "正在更改…" : "选择文件夹"}
+              {busy ? t("choosing") : t("chooseFolder")}
             </button>
           </div>
           <code className="storage-path" title={directory}>
             {directory}
           </code>
           <p className="setting-hint" title={defaultDirectory}>
-            {canChooseDirectory
-              ? "默认 ~/.calcbook。更改位置会复制当前笔记，原文件仍会保留。"
-              : "浏览器预览保存在此浏览器中。桌面版默认使用 ~/.calcbook，可选择其他文件夹。"}
+            {canChooseDirectory ? t("storageHintDesktop") : t("storageHintWeb")}
           </p>
           {message && (
             <p
@@ -139,15 +152,15 @@ export function SettingsDialog({
 
         <section className="settings-section" aria-labelledby="history-title">
           <div className="settings-row">
-            <h3 id="history-title">编辑历史</h3>
+            <h3 id="history-title">{t("historyTitle")}</h3>
             <span className="history-limit">
-              <span className="history-limit-label">为每个笔记分配历史版本空间</span>
+              <span className="history-limit-label">{t("historyPerNote")}</span>
               <input
                 className="history-limit-input"
                 inputMode="numeric"
                 autoComplete="off"
                 value={limitDraft ?? String(historyLimitKB)}
-                aria-label="为每个笔记分配历史版本空间（KB）"
+                aria-label={t("historyPerNoteAria")}
                 onChange={(event) => {
                   const digits = event.target.value.replace(/\D/g, "").slice(0, 6);
                   setLimitDraft(digits);
@@ -160,19 +173,15 @@ export function SettingsDialog({
               KB
             </span>
           </div>
-          <p className="setting-hint">
-            默认 {DEFAULT_HISTORY_LIMIT_KB} KB。设为 0 关闭历史，将删除所有历史版本记录——
-            编辑到哪篇或重启应用时才删除，重启前可反悔；达到上限时从最早的快照开始淘汰，
-            最新一份始终保留。
-          </p>
+          <p className="setting-hint">{t("historyHint", { default: DEFAULT_HISTORY_LIMIT_KB })}</p>
         </section>
 
         <section className="settings-section" aria-labelledby="format-toggles-title">
           <div className="settings-row">
-            <h3 id="format-toggles-title">格式化 - 空格与数字</h3>
+            <h3 id="format-toggles-title">{t("formatSpaces")}</h3>
           </div>
           <div className="format-toggles">
-            {TOGGLES.map(({ key, label, hint }) => (
+            {TOGGLES.map(({ key, labelKey }) => (
               <label className="format-option" key={key}>
                 <input
                   type="checkbox"
@@ -180,8 +189,8 @@ export function SettingsDialog({
                   onChange={(event) => onChangeFormat({ ...format, [key]: event.target.checked })}
                 />
                 <span>
-                  <strong>{label}</strong>
-                  <small>{hint}</small>
+                  <strong>{t(labelKey)}</strong>
+                  <small>{TOGGLE_HINTS[lang][key]}</small>
                 </span>
               </label>
             ))}
@@ -196,7 +205,7 @@ export function SettingsDialog({
               className="format-radio-col"
             >
               <p className="format-group-label" id="format-style-title">
-                格式化 - 单位写法
+                {t("formatUnitStyle")}
               </p>
               <div className="format-radio-row">
                 {UNIT_STYLES.map((value) => (
@@ -208,7 +217,7 @@ export function SettingsDialog({
                       checked={format.unitStyle === value}
                       onChange={() => onChangeFormat({ ...format, unitStyle: value })}
                     />
-                    {STYLE_OPTIONS.find((option) => option.value === value)?.label ?? value}
+                    {STYLE_LABELS[value][lang]}
                   </label>
                 ))}
               </div>
@@ -219,7 +228,7 @@ export function SettingsDialog({
               className="format-radio-col"
             >
               <p className="format-group-label" id="format-system-title">
-                格式化 - 单位制
+                {t("formatUnitSystem")}
               </p>
               <div className="format-radio-row">
                 {UNIT_SYSTEMS.map((value) => (
@@ -231,36 +240,31 @@ export function SettingsDialog({
                       checked={format.unitSystem === value}
                       onChange={() => onChangeFormat({ ...format, unitSystem: value })}
                     />
-                    {SYSTEM_OPTIONS.find((option) => option.value === value)?.label ?? value}
+                    {SYSTEM_LABELS[value][lang]}
                   </label>
                 ))}
               </div>
             </div>
           </div>
-          <p className="setting-hint">
-            自由：保留原文写法。公制/英制/市制：格式化时把一行里的其它制式换算过来（公制 &gt; 英制
-            &gt; 市制）。
-          </p>
+          <p className="setting-hint">{t("systemHint")}</p>
         </section>
 
         <section className="settings-section about-section" aria-labelledby="about-title">
           <div className="about-brand">
             <div>
-              <h3 id="about-title">关于 Calcbook</h3>
-              <span>一个优雅的笔记计算器，像写字一样计算。</span>
+              <h3 id="about-title">{t("aboutTitle")}</h3>
+              <span>{t("aboutTagline")}</span>
             </div>
           </div>
           <dl className="about-details">
             <div>
-              <dt>版本</dt>
+              <dt>{t("version")}</dt>
               <dd>{version}</dd>
             </div>
             <div>
-              <dt>构建时间</dt>
+              <dt>{t("buildTime")}</dt>
               <dd>
-                <time dateTime={buildTime}>
-                  {new Date(buildTime).toLocaleString("zh-CN", { hour12: false })}
-                </time>
+                <time dateTime={buildTime}>{formatBuildTime(buildTime, lang)}</time>
               </dd>
             </div>
           </dl>
@@ -285,12 +289,43 @@ export function SettingsDialog({
 
       <div className="settings-footer">
         <span className={saveError ? "save-error" : ""} role="status">
-          {saveError || (saveStatus === "saved" ? "设置已自动保存" : "正在保存…")}
+          {saveError || (saveStatus === "saved" ? t("settingsSaved") : t("saving"))}
         </span>
         <button type="button" className="primary-button" onClick={onClose} disabled={busy}>
-          完成
+          {t("done")}
         </button>
       </div>
     </Dialog>
   );
 }
+
+// 开关示例（小字）：按语言成对维护，键与 TOGGLES 对齐。
+const TOGGLE_HINTS: Record<
+  Lang,
+  Record<
+    | "thousands"
+    | "resultThousands"
+    | "unitSpace"
+    | "percentSpace"
+    | "operatorSpace"
+    | "commentSpace",
+    string
+  >
+> = {
+  zh: {
+    thousands: "正文 1,234,567",
+    resultThousands: "结果列 1,234,567",
+    unitSpace: "100L → 100 L",
+    percentSpace: "10% → 10 %",
+    operatorSpace: "+ - × ÷ / =",
+    commentSpace: "#标题 → # 标题",
+  },
+  en: {
+    thousands: "Body 1,234,567",
+    resultThousands: "Results 1,234,567",
+    unitSpace: "100L → 100 L",
+    percentSpace: "10% → 10 %",
+    operatorSpace: "+ - × ÷ / =",
+    commentSpace: "#Title → # Title",
+  },
+};
