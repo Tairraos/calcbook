@@ -6,7 +6,7 @@
 
 英文说明见 [README.md](README.md)。
 
-![Calcbook 运行界面](docs/assets/screenshot.png)
+![Calcbook 运行界面（中文）](docs/assets/screenshot-zh.png)
 
 它运行在你自己的电脑上：无需账号，不联网，没有遥测。可执行文件只有 5 MB 左右，打开即用。
 

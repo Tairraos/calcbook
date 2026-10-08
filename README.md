@@ -4,7 +4,7 @@ Write your calculations into your notes.
 
 Type an expression and the answer lights up on the right — like an idea getting a reply. Chinese variables, percentages, unit conversions and section totals are all part of its everyday language. Jot things down as they come; every line quietly saves as plain text you can take anywhere. And when you'd rather tap a calculator, a little floating window is always on call.
 
-![Calcbook in action](docs/assets/screenshot.png)
+![Calcbook in action — English UI](docs/assets/screenshot-en.png)
 
 It runs on your own computer: no account, no network, no telemetry. The executable is around 5 MB — just open it and go.
 
