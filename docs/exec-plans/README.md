@@ -4,8 +4,8 @@
 
 复杂工作在 active 中记录目标、验收、决策、进度与实际验证证据。完成后移入 completed；未完成项进入有原因和触发条件的债务表。小修复不强制新建计划。
 
-当前：[0002 · 笔记内查找替换](active/0002-find-replace.md)（验收中：浏览器通过，桌面实机待复核）；[0003 · 界面双语](active/0003-bilingual.md)（bilingual 分支）。
+当前：[0002 · 笔记内查找替换](active/0002-find-replace.md)（验收中：浏览器通过，桌面实机待复核）。
 
-已完成：[0001 · Harness 与可运行首版](completed/0001-bootstrap.md)（2026-10-07 归档）。
+已完成：[0001 · Harness 与可运行首版](completed/0001-bootstrap.md)、[0003 · 界面双语](completed/0003-bilingual.md)（v1.7.0 已发）。
 
 [技术债务与后续路线](tech-debt.md) 持续更新。

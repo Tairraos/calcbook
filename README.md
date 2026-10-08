@@ -1,5 +1,7 @@
 # Calcbook
 
+中文说明见 [README.zh.md](README.zh.md)。
+
 Write your calculations into your notes.
 
 Type an expression and the answer lights up on the right — like an idea getting a reply. Chinese variables, percentages, unit conversions and section totals are all part of its everyday language. Jot things down as they come; every line quietly saves as plain text you can take anywhere. And when you'd rather tap a calculator, a little floating window is always on call.
@@ -99,8 +101,6 @@ You need Node.js 22.18+ (24 LTS recommended), pnpm 10.25; for the desktop app al
 ## Participating
 
 Issues and PRs are welcome: fixing a typo, reporting a miscalculated example, or adding a missing unit are all great first steps. Before diving in, read [AGENTS.md](AGENTS.md) and the [docs index](docs/index.md) for project boundaries and how things are verified. Small steps, with reproducible examples.
-
-中文说明见 [README.zh.md](README.zh.md)。
 
 ## Development
 
